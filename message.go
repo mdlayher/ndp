@@ -34,7 +34,6 @@ func MarshalMessage(m Message) ([]byte, error) {
 		Code: 0,
 		// Calculated by caller or OS.
 		Checksum: 0,
-		// TODO(mdlayher): is this the correct MessageBody implementation?
 		Body: &icmp.DefaultMessageBody{
 			Data: mb,
 		},
