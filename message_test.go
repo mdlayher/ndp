@@ -227,6 +227,12 @@ func TestNeighborAdvertisementUnmarshalBinary(t *testing.T) {
 			b:    ip,
 		},
 		{
+			name: "bad, IPv4 mapped",
+			b: append([]byte{
+				0xe0, 0x00, 0x00, 0x00,
+			}, net.IPv4(192, 168, 1, 1)...),
+		},
+		{
 			name: "ok",
 			b: append([]byte{
 				0xe0, 0x00, 0x00, 0x00,

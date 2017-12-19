@@ -115,6 +115,11 @@ func (na *NeighborAdvertisement) UnmarshalBinary(b []byte) error {
 		return io.ErrUnexpectedEOF
 	}
 
+	addr := b[4 : 4+net.IPv6len]
+	if err := checkIPv6(addr); err != nil {
+		return err
+	}
+
 	*na = NeighborAdvertisement{
 		Router:    (b[0] & 0x80) != 0,
 		Solicited: (b[0] & 0x40) != 0,
@@ -123,7 +128,7 @@ func (na *NeighborAdvertisement) UnmarshalBinary(b []byte) error {
 		TargetAddress: make(net.IP, net.IPv6len),
 	}
 
-	copy(na.TargetAddress, b[4:])
+	copy(na.TargetAddress, addr)
 
 	return nil
 }
