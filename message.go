@@ -10,6 +10,14 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+const (
+	// Length of an ICMPv6 header.
+	icmpLen = 4
+
+	// Minimum byte length values for each type of valid Message.
+	naLen = 20
+)
+
 // A Message is a Neighbor Discovery Protocol message.
 type Message interface {
 	encoding.BinaryMarshaler
@@ -47,7 +55,7 @@ func MarshalMessage(m Message) ([]byte, error) {
 // ParseMessage parses a Message from its binary form after determining its
 // type from a leading ICMPv6 message.
 func ParseMessage(b []byte) (Message, error) {
-	if len(b) < 4 {
+	if len(b) < icmpLen {
 		return nil, io.ErrUnexpectedEOF
 	}
 
@@ -61,7 +69,7 @@ func ParseMessage(b []byte) (Message, error) {
 		return nil, fmt.Errorf("ndp: unrecognized ICMPv6 type: %d", t)
 	}
 
-	if err := m.UnmarshalBinary(b[4:]); err != nil {
+	if err := m.UnmarshalBinary(b[icmpLen:]); err != nil {
 		return nil, err
 	}
 
@@ -77,8 +85,7 @@ type NeighborAdvertisement struct {
 	Solicited     bool
 	Override      bool
 	TargetAddress net.IP
-
-	// TODO(mdlayher): options type.
+	Options       []Option
 }
 
 func (na *NeighborAdvertisement) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeNeighborAdvertisement }
@@ -89,7 +96,7 @@ func (na *NeighborAdvertisement) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 
-	b := make([]byte, 20)
+	b := make([]byte, naLen)
 
 	if na.Router {
 		b[0] |= (1 << 7)
@@ -103,17 +110,30 @@ func (na *NeighborAdvertisement) MarshalBinary() ([]byte, error) {
 
 	copy(b[4:], na.TargetAddress)
 
+	ob, err := marshalOptions(na.Options)
+	if err != nil {
+		return nil, err
+	}
+
+	b = append(b, ob...)
+
 	return b, nil
 }
 
 // UnmarshalBinary implements Message.
 func (na *NeighborAdvertisement) UnmarshalBinary(b []byte) error {
-	if len(b) < 20 {
+	if len(b) < naLen {
 		return io.ErrUnexpectedEOF
 	}
 
-	addr := b[4 : 4+net.IPv6len]
+	// Skip flags and reserved area.
+	addr := b[4:naLen]
 	if err := checkIPv6(addr); err != nil {
+		return err
+	}
+
+	options, err := parseOptions(b[naLen:])
+	if err != nil {
 		return err
 	}
 
@@ -123,6 +143,8 @@ func (na *NeighborAdvertisement) UnmarshalBinary(b []byte) error {
 		Override:  (b[0] & 0x20) != 0,
 
 		TargetAddress: make(net.IP, net.IPv6len),
+
+		Options: options,
 	}
 
 	copy(na.TargetAddress, addr)

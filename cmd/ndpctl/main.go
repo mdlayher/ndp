@@ -34,6 +34,12 @@ func main() {
 
 	m := &ndp.NeighborAdvertisement{
 		TargetAddress: llAddr,
+		Options: []ndp.Option{
+			&ndp.LinkLayerAddress{
+				Direction: ndp.Target,
+				Addr:      ifi.HardwareAddr,
+			},
+		},
 	}
 
 	for i := 0; i < 10; i++ {
