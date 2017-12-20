@@ -12,11 +12,12 @@ import (
 
 func TestMarshalParseMessage(t *testing.T) {
 	ip := mustIPv6("2001:db8:dead:beef:f00::00d")
+	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
 
 	tests := []struct {
 		name string
 		m    ndp.Message
-		b    []byte
+		bs   [][]byte
 	}{
 		{
 			name: "neighbor advertisement",
@@ -25,11 +26,26 @@ func TestMarshalParseMessage(t *testing.T) {
 				Solicited:     true,
 				Override:      true,
 				TargetAddress: ip,
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Source,
+						Addr:      addr,
+					},
+				},
 			},
-			b: append([]byte{
-				136, 0x00, 0x00, 0x00,
-				0xe0, 0x00, 0x00, 0x00,
-			}, ip...),
+			bs: [][]byte{
+				// ICMPv6 header and NA message.
+				{
+					136, 0x00, 0x00, 0x00,
+					0xe0, 0x00, 0x00, 0x00,
+				},
+				ip,
+				// Source LLA option.
+				{
+					0x01, 0x01,
+				},
+				addr,
+			},
 		},
 	}
 
@@ -40,7 +56,13 @@ func TestMarshalParseMessage(t *testing.T) {
 				t.Fatalf("failed to marshal message: %v", err)
 			}
 
-			if diff := cmp.Diff(tt.b, b); diff != "" {
+			// Append all byte slices from the test fixture.
+			var ttb []byte
+			for _, bb := range tt.bs {
+				ttb = append(ttb, bb...)
+			}
+
+			if diff := cmp.Diff(ttb, b); diff != "" {
 				t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
 			}
 
@@ -61,28 +83,63 @@ func TestParseMessage(t *testing.T) {
 
 	tests := []struct {
 		name string
-		b    []byte
+		bs   [][]byte
 		m    ndp.Message
 		ok   bool
 	}{
 		{
 			name: "bad, short",
-			b: []byte{
+			bs: [][]byte{{
 				255,
-			},
+			}},
 		},
 		{
 			name: "bad, unknown type",
-			b: []byte{
+			bs: [][]byte{{
 				255, 0x00, 0x00, 0x00,
+			}},
+		},
+		{
+			name: "bad, fuzz crasher",
+			bs: [][]byte{
+				[]byte("\x880000000000000000000" + "0000\x01\x01"),
+			},
+		},
+		{
+			name: "bad, short option",
+			bs: [][]byte{
+				{
+					136, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+				ip,
+				{
+					0xff,
+				},
+			},
+		},
+		{
+			name: "bad, unknown option",
+			bs: [][]byte{
+				{
+					136, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+				ip,
+				{
+					0xff, 0x01,
+				},
 			},
 		},
 		{
 			name: "ok, neighbor advertisement",
-			b: append([]byte{
-				136, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00,
-			}, ip...),
+			bs: [][]byte{
+				{
+					136, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+				ip,
+			},
 			m:  &ndp.NeighborAdvertisement{},
 			ok: true,
 		},
@@ -90,7 +147,13 @@ func TestParseMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := ndp.ParseMessage(tt.b)
+			// Append all byte slices from the test fixture.
+			var ttb []byte
+			for _, bb := range tt.bs {
+				ttb = append(ttb, bb...)
+			}
+
+			m, err := ndp.ParseMessage(ttb)
 
 			if err != nil && tt.ok {
 				t.Fatalf("unexpected error: %v", err)
@@ -112,6 +175,8 @@ func TestParseMessage(t *testing.T) {
 
 func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 	ip := mustIPv6("2001:db8::1")
+	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
+
 	bfn := func(b []byte) []byte {
 		return append(b, ip...)
 	}
@@ -178,6 +243,31 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				TargetAddress: ip,
 			},
 			b:  bfn([]byte{0xe0, 0x00, 0x00, 0x00}),
+			ok: true,
+		},
+		{
+			name: "ok, with target LLA",
+			na: &ndp.NeighborAdvertisement{
+				Router:        true,
+				Solicited:     true,
+				Override:      true,
+				TargetAddress: ip,
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Target,
+						Addr:      addr,
+					},
+				},
+			},
+			b: append(
+				// ICMPv6 and NA.
+				bfn([]byte{0xe0, 0x00, 0x00, 0x00}),
+				// Target LLA option.
+				[]byte{
+					0x02, 0x01,
+					0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,
+				}...,
+			),
 			ok: true,
 		},
 	}
