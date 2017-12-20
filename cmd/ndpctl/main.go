@@ -20,6 +20,18 @@ func main() {
 	}
 	defer c.Close()
 
+	go func() {
+		for {
+			m, cm, src, err := c.ReadFrom()
+			if err != nil {
+				log.Printf("read: %v", err)
+				continue
+			}
+
+			log.Println("read:", m, cm, src)
+		}
+	}()
+
 	m := &ndp.NeighborAdvertisement{
 		TargetAddress: llAddr,
 	}
@@ -27,7 +39,7 @@ func main() {
 	for i := 0; i < 10; i++ {
 		log.Printf("send: %+v", m)
 
-		if err := c.WriteTo(m, nil, nil); err != nil {
+		if err := c.WriteTo(m, nil, net.IPv6linklocalallnodes); err != nil {
 			log.Fatalf("failed to write: %v", err)
 		}
 
