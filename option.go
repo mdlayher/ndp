@@ -7,6 +7,18 @@ import (
 	"net"
 )
 
+const (
+	// Length of a link-layer address for Ethernet networks.
+	ethAddrLen = 6
+
+	// The assumed NDP option length (in units of 8 bytes) for a source or
+	// target link layer address option for Ethernet networks.
+	llaOptLen = 1
+
+	// Byte length values required for each type of valid Option.
+	llaByteLen = 8
+)
+
 // A Direction specifies the direction of an Option as a source or target.
 type Direction int
 
@@ -43,13 +55,13 @@ func (lla *LinkLayerAddress) MarshalBinary() ([]byte, error) {
 		return nil, fmt.Errorf("ndp: invalid link-layer address direction: %d", d)
 	}
 
-	if len(lla.Addr) != 6 {
+	if len(lla.Addr) != ethAddrLen {
 		return nil, fmt.Errorf("ndp: invalid link-layer address: %q", lla.Addr.String())
 	}
 
-	b := make([]byte, 8)
+	b := make([]byte, llaByteLen)
 	b[0] = lla.code()
-	b[1] = 1
+	b[1] = llaOptLen
 	copy(b[2:], lla.Addr)
 
 	return b, nil
@@ -57,7 +69,7 @@ func (lla *LinkLayerAddress) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary implements Option.
 func (lla *LinkLayerAddress) UnmarshalBinary(b []byte) error {
-	if len(b) < 8 {
+	if len(b) < llaByteLen {
 		return io.ErrUnexpectedEOF
 	}
 
