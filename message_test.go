@@ -28,7 +28,7 @@ func TestMarshalParseMessage(t *testing.T) {
 				TargetAddress: ip,
 				Options: []ndp.Option{
 					&ndp.LinkLayerAddress{
-						Direction: ndp.Source,
+						Direction: ndp.Target,
 						Addr:      addr,
 					},
 				},
@@ -38,6 +38,31 @@ func TestMarshalParseMessage(t *testing.T) {
 				{
 					136, 0x00, 0x00, 0x00,
 					0xe0, 0x00, 0x00, 0x00,
+				},
+				ip,
+				// Target LLA option.
+				{
+					0x02, 0x01,
+				},
+				addr,
+			},
+		},
+		{
+			name: "neighbor solicitation",
+			m: &ndp.NeighborSolicitation{
+				TargetAddress: ip,
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Source,
+						Addr:      addr,
+					},
+				},
+			},
+			bs: [][]byte{
+				// ICMPv6 header and NS message.
+				{
+					135, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
 				},
 				ip,
 				// Source LLA option.
@@ -141,6 +166,18 @@ func TestParseMessage(t *testing.T) {
 				ip,
 			},
 			m:  &ndp.NeighborAdvertisement{},
+			ok: true,
+		},
+		{
+			name: "ok, neighbor advertisement",
+			bs: [][]byte{
+				{
+					135, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+				ip,
+			},
+			m:  &ndp.NeighborSolicitation{},
 			ok: true,
 		},
 	}
@@ -355,6 +392,149 @@ func TestNeighborAdvertisementUnmarshalBinary(t *testing.T) {
 
 			if diff := cmp.Diff(tt.na, na); diff != "" {
 				t.Fatalf("unexpected neighbor advertisement (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
+	ip := mustIPv6("2001:db8::1")
+	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
+
+	bfn := func(b []byte) []byte {
+		return append(b, ip...)
+	}
+
+	tests := []struct {
+		name string
+		ns   *ndp.NeighborSolicitation
+		b    []byte
+		ok   bool
+	}{
+		{
+			name: "bad, malformed IP address",
+			ns: &ndp.NeighborSolicitation{
+				TargetAddress: net.IP{192, 168, 1, 1, 0, 0},
+			},
+		},
+		{
+			name: "bad, IPv4 address",
+			ns: &ndp.NeighborSolicitation{
+				TargetAddress: net.IPv4(192, 168, 1, 1),
+			},
+		},
+		{
+			name: "ok, no options",
+			ns: &ndp.NeighborSolicitation{
+				TargetAddress: ip,
+			},
+			b:  bfn([]byte{0x00, 0x00, 0x00, 0x00}),
+			ok: true,
+		},
+		{
+			name: "ok, with source LLA",
+			ns: &ndp.NeighborSolicitation{
+				TargetAddress: ip,
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Source,
+						Addr:      addr,
+					},
+				},
+			},
+			b: append(
+				// ICMPv6 and NA.
+				bfn([]byte{0x00, 0x00, 0x00, 0x00}),
+				// Source LLA option.
+				[]byte{
+					0x01, 0x01,
+					0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,
+				}...,
+			),
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := tt.ns.MarshalBinary()
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			if diff := cmp.Diff(tt.b, b); diff != "" {
+				t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
+			}
+
+			na := new(ndp.NeighborSolicitation)
+			if err := na.UnmarshalBinary(b); err != nil {
+				t.Fatalf("failed to unmarshal binary: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.ns, na); diff != "" {
+				t.Fatalf("unexpected neighbor advertisement (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNeighborSolicitationUnmarshalBinary(t *testing.T) {
+	ip := mustIPv6("2001:db8:dead:beef:f00::00d")
+
+	tests := []struct {
+		name string
+		b    []byte
+		ns   *ndp.NeighborSolicitation
+		ok   bool
+	}{
+		{
+			name: "bad, short",
+			b:    ip,
+		},
+		{
+			name: "bad, IPv4 mapped",
+			b: append([]byte{
+				0xe0, 0x00, 0x00, 0x00,
+			}, net.IPv4(192, 168, 1, 1)...),
+		},
+		{
+			name: "ok",
+			b: append([]byte{
+				0x00, 0x00, 0x00, 0x00,
+			}, ip...),
+			ns: &ndp.NeighborSolicitation{
+				TargetAddress: ip,
+			},
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := new(ndp.NeighborSolicitation)
+			err := ns.UnmarshalBinary(tt.b)
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			if diff := cmp.Diff(tt.ns, ns); diff != "" {
+				t.Fatalf("unexpected neighbor solicitation (-want +got):\n%s", diff)
 			}
 		})
 	}

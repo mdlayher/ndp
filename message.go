@@ -16,6 +16,7 @@ const (
 
 	// Minimum byte length values for each type of valid Message.
 	naLen = 20
+	nsLen = 20
 )
 
 // A Message is a Neighbor Discovery Protocol message.
@@ -65,6 +66,8 @@ func ParseMessage(b []byte) (Message, error) {
 	switch t := ipv6.ICMPType(b[0]); t {
 	case ipv6.ICMPTypeNeighborAdvertisement:
 		m = new(NeighborAdvertisement)
+	case ipv6.ICMPTypeNeighborSolicitation:
+		m = new(NeighborSolicitation)
 	default:
 		return nil, fmt.Errorf("ndp: unrecognized ICMPv6 type: %d", t)
 	}
@@ -148,6 +151,64 @@ func (na *NeighborAdvertisement) UnmarshalBinary(b []byte) error {
 	}
 
 	copy(na.TargetAddress, addr)
+
+	return nil
+}
+
+var _ Message = &NeighborSolicitation{}
+
+// A NeighborSolicitation is a Neighbor Solicitation message as
+// described in RFC 4861, Section 4.3.
+type NeighborSolicitation struct {
+	TargetAddress net.IP
+	Options       []Option
+}
+
+func (ns *NeighborSolicitation) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeNeighborSolicitation }
+
+// MarshalBinary implements Message.
+func (ns *NeighborSolicitation) MarshalBinary() ([]byte, error) {
+	if err := checkIPv6(ns.TargetAddress); err != nil {
+		return nil, err
+	}
+
+	b := make([]byte, naLen)
+	copy(b[4:], ns.TargetAddress)
+
+	ob, err := marshalOptions(ns.Options)
+	if err != nil {
+		return nil, err
+	}
+
+	b = append(b, ob...)
+
+	return b, nil
+}
+
+// UnmarshalBinary implements Message.
+func (ns *NeighborSolicitation) UnmarshalBinary(b []byte) error {
+	if len(b) < nsLen {
+		return io.ErrUnexpectedEOF
+	}
+
+	// Skip reserved area.
+	addr := b[4:nsLen]
+	if err := checkIPv6(addr); err != nil {
+		return err
+	}
+
+	options, err := parseOptions(b[nsLen:])
+	if err != nil {
+		return err
+	}
+
+	*ns = NeighborSolicitation{
+		TargetAddress: make(net.IP, net.IPv6len),
+
+		Options: options,
+	}
+
+	copy(ns.TargetAddress, addr)
 
 	return nil
 }
