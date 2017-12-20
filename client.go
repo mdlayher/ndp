@@ -17,6 +17,7 @@ type Conn struct {
 	cm *ipv6.ControlMessage
 
 	allNodes *net.IPAddr
+	llAddr   *net.IPAddr
 }
 
 // Dial dials a NDP connection using the specified interface.  It returns
@@ -60,6 +61,7 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 		},
 
 		allNodes: allNodes,
+		llAddr:   llAddr,
 	}
 
 	return c, llAddr.IP, nil
@@ -68,6 +70,33 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 // Close closes the Conn's underlying connection.
 func (c *Conn) Close() error {
 	return c.pc.Close()
+}
+
+// ReadFrom reads a Message from the Conn and returns its control message and
+// source network address.  Messages sourced from this machine and malformed or
+// unrecognized ICMPv6 messages are filtered.
+func (c *Conn) ReadFrom() (Message, *ipv6.ControlMessage, net.IP, error) {
+	b := make([]byte, 1280)
+	for {
+		n, cm, src, err := c.pc.ReadFrom(b)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		// Did this machine send this message?
+		ip := src.(*net.IPAddr).IP
+		if ip.Equal(c.llAddr.IP) {
+			continue
+		}
+
+		// Filter any malformed and unrecognized messages.
+		m, err := ParseMessage(b[:n])
+		if err != nil {
+			continue
+		}
+
+		return m, cm, ip, nil
+	}
 }
 
 // WriteTo writes a Message to the Conn, with an optional control message and
