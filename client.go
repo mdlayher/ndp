@@ -8,6 +8,9 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
+// HopLimit is the expected IPv6 hop limit for all NDP messages.
+const HopLimit = 255
+
 // A Conn is a Neighbor Discovery Protocol connection.
 type Conn struct {
 	pc *ipv6.PacketConn
@@ -41,7 +44,8 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 	}
 
 	// Calculate and place ICMPv6 checksum at correct offset in all messages.
-	if err := pc.SetChecksum(true, 2); err != nil {
+	const chkOff = 2
+	if err := pc.SetChecksum(true, chkOff); err != nil {
 		return nil, nil, err
 	}
 
@@ -50,8 +54,7 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 
 		// The default control message used when none is specified.
 		cm: &ipv6.ControlMessage{
-			// Note that hop limit is always 255 in NDP.
-			HopLimit: 255,
+			HopLimit: HopLimit,
 			Src:      llAddr.IP,
 			IfIndex:  ifi.Index,
 		},
@@ -70,8 +73,7 @@ func (c *Conn) Close() error {
 // WriteTo writes a Message to the Conn, with an optional control message and
 // destination network address.
 //
-// If cm is nil, a default control message will be sent.  If dst is nil, the
-// message will be sent to the IPv6 link-local all nodes address for the Conn.
+// If cm is nil, a default control message will be sent.
 func (c *Conn) WriteTo(m Message, cm *ipv6.ControlMessage, dst net.IP) error {
 	b, err := MarshalMessage(m)
 	if err != nil {
@@ -84,18 +86,8 @@ func (c *Conn) WriteTo(m Message, cm *ipv6.ControlMessage, dst net.IP) error {
 	}
 
 	addr := &net.IPAddr{IP: dst}
-	if dst == nil {
-		addr = c.allNodes
-	}
-
 	_, err = c.pc.WriteTo(b, cm, addr)
 	return err
-}
-
-// linkLocalPrefix is the IPv6 link-local prefix fe80::/10.
-var linkLocalPrefix = &net.IPNet{
-	IP:   net.ParseIP("fe80::"),
-	Mask: net.CIDRMask(10, 128),
 }
 
 // linkLocalAddr searches for a valid IPv6 link-local address for the specified
@@ -116,7 +108,7 @@ func linkLocalAddr(ifi *net.Interface) (*net.IPAddr, error) {
 			continue
 		}
 
-		if !linkLocalPrefix.Contains(ipn.IP) {
+		if !ipn.IP.IsLinkLocalUnicast() {
 			continue
 		}
 
