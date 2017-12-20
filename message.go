@@ -12,9 +12,10 @@ import (
 
 // A Message is a Neighbor Discovery Protocol message.
 type Message interface {
-	Type() ipv6.ICMPType
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
+
+	icmpType() ipv6.ICMPType
 }
 
 // MarshalMessage marshals a Message into its binary form and prepends an
@@ -29,7 +30,7 @@ func MarshalMessage(m Message) ([]byte, error) {
 	}
 
 	im := icmp.Message{
-		Type: m.Type(),
+		Type: m.icmpType(),
 		// Always zero.
 		Code: 0,
 		// Calculated by caller or OS.
@@ -80,10 +81,7 @@ type NeighborAdvertisement struct {
 	// TODO(mdlayher): options type.
 }
 
-// Type implements Message.
-func (na *NeighborAdvertisement) Type() ipv6.ICMPType {
-	return ipv6.ICMPTypeNeighborAdvertisement
-}
+func (na *NeighborAdvertisement) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeNeighborAdvertisement }
 
 // MarshalBinary implements Message.
 func (na *NeighborAdvertisement) MarshalBinary() ([]byte, error) {
