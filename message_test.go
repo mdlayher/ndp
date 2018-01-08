@@ -81,12 +81,7 @@ func TestMarshalParseMessage(t *testing.T) {
 				t.Fatalf("failed to marshal message: %v", err)
 			}
 
-			// Append all byte slices from the test fixture.
-			var ttb []byte
-			for _, bb := range tt.bs {
-				ttb = append(ttb, bb...)
-			}
-
+			ttb := merge(tt.bs)
 			if diff := cmp.Diff(ttb, b); diff != "" {
 				t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
 			}
@@ -169,7 +164,7 @@ func TestParseMessage(t *testing.T) {
 			ok: true,
 		},
 		{
-			name: "ok, neighbor advertisement",
+			name: "ok, neighbor solicitation",
 			bs: [][]byte{
 				{
 					135, 0x00, 0x00, 0x00,
@@ -184,12 +179,7 @@ func TestParseMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Append all byte slices from the test fixture.
-			var ttb []byte
-			for _, bb := range tt.bs {
-				ttb = append(ttb, bb...)
-			}
-
+			ttb := merge(tt.bs)
 			m, err := ndp.ParseMessage(ttb)
 
 			if err != nil && tt.ok {
@@ -214,14 +204,10 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 	ip := mustIPv6("2001:db8::1")
 	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
 
-	bfn := func(b []byte) []byte {
-		return append(b, ip...)
-	}
-
 	tests := []struct {
 		name string
 		na   *ndp.NeighborAdvertisement
-		b    []byte
+		bs   [][]byte
 		ok   bool
 	}{
 		{
@@ -241,7 +227,10 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 			na: &ndp.NeighborAdvertisement{
 				TargetAddress: ip,
 			},
-			b:  bfn([]byte{0x00, 0x00, 0x00, 0x00}),
+			bs: [][]byte{
+				{0x00, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ok: true,
 		},
 		{
@@ -250,7 +239,10 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				Router:        true,
 				TargetAddress: ip,
 			},
-			b:  bfn([]byte{0x80, 0x00, 0x00, 0x00}),
+			bs: [][]byte{
+				{0x80, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ok: true,
 		},
 		{
@@ -259,7 +251,10 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				Solicited:     true,
 				TargetAddress: ip,
 			},
-			b:  bfn([]byte{0x40, 0x00, 0x00, 0x00}),
+			bs: [][]byte{
+				{0x40, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ok: true,
 		},
 		{
@@ -268,7 +263,10 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				Override:      true,
 				TargetAddress: ip,
 			},
-			b:  bfn([]byte{0x20, 0x00, 0x00, 0x00}),
+			bs: [][]byte{
+				{0x20, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ok: true,
 		},
 		{
@@ -279,7 +277,10 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				Override:      true,
 				TargetAddress: ip,
 			},
-			b:  bfn([]byte{0xe0, 0x00, 0x00, 0x00}),
+			bs: [][]byte{
+				{0xe0, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ok: true,
 		},
 		{
@@ -296,15 +297,16 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 					},
 				},
 			},
-			b: append(
+			bs: [][]byte{
 				// ICMPv6 and NA.
-				bfn([]byte{0xe0, 0x00, 0x00, 0x00}),
+				{0xe0, 0x00, 0x00, 0x00},
+				ip,
 				// Target LLA option.
-				[]byte{
+				{
 					0x02, 0x01,
 					0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,
-				}...,
-			),
+				},
+			},
 			ok: true,
 		},
 	}
@@ -324,7 +326,8 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.b, b); diff != "" {
+			ttb := merge(tt.bs)
+			if diff := cmp.Diff(ttb, b); diff != "" {
 				t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
 			}
 
@@ -345,25 +348,27 @@ func TestNeighborAdvertisementUnmarshalBinary(t *testing.T) {
 
 	tests := []struct {
 		name string
-		b    []byte
+		bs   [][]byte
 		na   *ndp.NeighborAdvertisement
 		ok   bool
 	}{
 		{
 			name: "bad, short",
-			b:    ip,
+			bs:   [][]byte{ip},
 		},
 		{
 			name: "bad, IPv4 mapped",
-			b: append([]byte{
-				0xe0, 0x00, 0x00, 0x00,
-			}, net.IPv4(192, 168, 1, 1)...),
+			bs: [][]byte{
+				{0xe0, 0x00, 0x00, 0x00},
+				net.IPv4(192, 168, 1, 1),
+			},
 		},
 		{
 			name: "ok",
-			b: append([]byte{
-				0xe0, 0x00, 0x00, 0x00,
-			}, ip...),
+			bs: [][]byte{
+				{0xe0, 0x00, 0x00, 0x00},
+				ip,
+			},
 			na: &ndp.NeighborAdvertisement{
 				Router:        true,
 				Solicited:     true,
@@ -377,7 +382,7 @@ func TestNeighborAdvertisementUnmarshalBinary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			na := new(ndp.NeighborAdvertisement)
-			err := na.UnmarshalBinary(tt.b)
+			err := na.UnmarshalBinary(merge(tt.bs))
 
 			if err != nil && tt.ok {
 				t.Fatalf("unexpected error: %v", err)
@@ -401,14 +406,10 @@ func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 	ip := mustIPv6("2001:db8::1")
 	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
 
-	bfn := func(b []byte) []byte {
-		return append(b, ip...)
-	}
-
 	tests := []struct {
 		name string
 		ns   *ndp.NeighborSolicitation
-		b    []byte
+		bs   [][]byte
 		ok   bool
 	}{
 		{
@@ -428,7 +429,10 @@ func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 			ns: &ndp.NeighborSolicitation{
 				TargetAddress: ip,
 			},
-			b:  bfn([]byte{0x00, 0x00, 0x00, 0x00}),
+			bs: [][]byte{
+				{0x00, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ok: true,
 		},
 		{
@@ -442,15 +446,16 @@ func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 					},
 				},
 			},
-			b: append(
+			bs: [][]byte{
 				// ICMPv6 and NA.
-				bfn([]byte{0x00, 0x00, 0x00, 0x00}),
+				[]byte{0x00, 0x00, 0x00, 0x00},
+				ip,
 				// Source LLA option.
 				[]byte{
 					0x01, 0x01,
 					0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,
-				}...,
-			),
+				},
+			},
 			ok: true,
 		},
 	}
@@ -470,7 +475,8 @@ func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.b, b); diff != "" {
+			ttb := merge(tt.bs)
+			if diff := cmp.Diff(ttb, b); diff != "" {
 				t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
 			}
 
@@ -491,25 +497,27 @@ func TestNeighborSolicitationUnmarshalBinary(t *testing.T) {
 
 	tests := []struct {
 		name string
-		b    []byte
+		bs   [][]byte
 		ns   *ndp.NeighborSolicitation
 		ok   bool
 	}{
 		{
 			name: "bad, short",
-			b:    ip,
+			bs:   [][]byte{ip},
 		},
 		{
 			name: "bad, IPv4 mapped",
-			b: append([]byte{
-				0xe0, 0x00, 0x00, 0x00,
-			}, net.IPv4(192, 168, 1, 1)...),
+			bs: [][]byte{
+				{0xe0, 0x00, 0x00, 0x00},
+				net.IPv4(192, 168, 1, 1),
+			},
 		},
 		{
 			name: "ok",
-			b: append([]byte{
-				0x00, 0x00, 0x00, 0x00,
-			}, ip...),
+			bs: [][]byte{
+				{0x00, 0x00, 0x00, 0x00},
+				ip,
+			},
 			ns: &ndp.NeighborSolicitation{
 				TargetAddress: ip,
 			},
@@ -520,7 +528,7 @@ func TestNeighborSolicitationUnmarshalBinary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := new(ndp.NeighborSolicitation)
-			err := ns.UnmarshalBinary(tt.b)
+			err := ns.UnmarshalBinary(merge(tt.bs))
 
 			if err != nil && tt.ok {
 				t.Fatalf("unexpected error: %v", err)
@@ -538,6 +546,15 @@ func TestNeighborSolicitationUnmarshalBinary(t *testing.T) {
 			}
 		})
 	}
+}
+
+func merge(bs [][]byte) []byte {
+	var b []byte
+	for _, bb := range bs {
+		b = append(b, bb...)
+	}
+
+	return b
 }
 
 func mustIPv6(s string) net.IP {
