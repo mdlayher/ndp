@@ -298,7 +298,7 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				},
 			},
 			bs: [][]byte{
-				// ICMPv6 and NA.
+				// NA message.
 				{0xe0, 0x00, 0x00, 0x00},
 				ip,
 				// Target LLA option.
@@ -447,7 +447,7 @@ func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 				},
 			},
 			bs: [][]byte{
-				// ICMPv6 and NA.
+				// NS message.
 				[]byte{0x00, 0x00, 0x00, 0x00},
 				ip,
 				// Source LLA option.
