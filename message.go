@@ -17,6 +17,7 @@ const (
 	// Minimum byte length values for each type of valid Message.
 	naLen = 20
 	nsLen = 20
+	rsLen = 4
 )
 
 // A Message is a Neighbor Discovery Protocol message.
@@ -68,6 +69,8 @@ func ParseMessage(b []byte) (Message, error) {
 		m = new(NeighborAdvertisement)
 	case ipv6.ICMPTypeNeighborSolicitation:
 		m = new(NeighborSolicitation)
+	case ipv6.ICMPTypeRouterSolicitation:
+		m = new(RouterSolicitation)
 	default:
 		return nil, fmt.Errorf("ndp: unrecognized ICMPv6 type: %d", t)
 	}
@@ -209,6 +212,50 @@ func (ns *NeighborSolicitation) UnmarshalBinary(b []byte) error {
 	}
 
 	copy(ns.TargetAddress, addr)
+
+	return nil
+}
+
+var _ Message = &RouterSolicitation{}
+
+// A RouterSolicitation is a Router Solicitation message as
+// described in RFC 4861, Section 4.1.
+type RouterSolicitation struct {
+	Options []Option
+}
+
+func (rs *RouterSolicitation) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeRouterSolicitation }
+
+// MarshalBinary implements Message.
+func (rs *RouterSolicitation) MarshalBinary() ([]byte, error) {
+	// b contains reserved area.
+	b := make([]byte, rsLen)
+
+	ob, err := marshalOptions(rs.Options)
+	if err != nil {
+		return nil, err
+	}
+
+	b = append(b, ob...)
+
+	return b, nil
+}
+
+// UnmarshalBinary implements Message.
+func (rs *RouterSolicitation) UnmarshalBinary(b []byte) error {
+	if len(b) < rsLen {
+		return io.ErrUnexpectedEOF
+	}
+
+	// Skip reserved area.
+	options, err := parseOptions(b[rsLen:])
+	if err != nil {
+		return err
+	}
+
+	*rs = RouterSolicitation{
+		Options: options,
+	}
 
 	return nil
 }

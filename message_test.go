@@ -72,6 +72,29 @@ func TestMarshalParseMessage(t *testing.T) {
 				addr,
 			},
 		},
+		{
+			name: "router solicitation",
+			m: &ndp.RouterSolicitation{
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Source,
+						Addr:      addr,
+					},
+				},
+			},
+			bs: [][]byte{
+				// ICMPv6 header and RS message.
+				{
+					133, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+				// Source LLA option.
+				{
+					0x01, 0x01,
+				},
+				addr,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -173,6 +196,17 @@ func TestParseMessage(t *testing.T) {
 				ip,
 			},
 			m:  &ndp.NeighborSolicitation{},
+			ok: true,
+		},
+		{
+			name: "ok, router solicitation",
+			bs: [][]byte{
+				{
+					133, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			m:  &ndp.RouterSolicitation{},
 			ok: true,
 		},
 	}
@@ -543,6 +577,122 @@ func TestNeighborSolicitationUnmarshalBinary(t *testing.T) {
 
 			if diff := cmp.Diff(tt.ns, ns); diff != "" {
 				t.Fatalf("unexpected neighbor solicitation (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRouterSolicitationMarshalUnmarshalBinary(t *testing.T) {
+	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
+
+	tests := []struct {
+		name string
+		rs   *ndp.RouterSolicitation
+		bs   [][]byte
+		ok   bool
+	}{
+		{
+			name: "ok, no options",
+			rs:   &ndp.RouterSolicitation{},
+			bs: [][]byte{
+				{0x00, 0x00, 0x00, 0x00},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, with source LLA",
+			rs: &ndp.RouterSolicitation{
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Source,
+						Addr:      addr,
+					},
+				},
+			},
+			bs: [][]byte{
+				// RS message.
+				[]byte{0x00, 0x00, 0x00, 0x00},
+				// Source LLA option.
+				[]byte{
+					0x01, 0x01,
+					0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,
+				},
+			},
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := tt.rs.MarshalBinary()
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			ttb := merge(tt.bs)
+			if diff := cmp.Diff(ttb, b); diff != "" {
+				t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
+			}
+
+			rs := new(ndp.RouterSolicitation)
+			if err := rs.UnmarshalBinary(b); err != nil {
+				t.Fatalf("failed to unmarshal binary: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.rs, rs); diff != "" {
+				t.Fatalf("unexpected router solicitation (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRouterSolicitationUnmarshalBinary(t *testing.T) {
+	tests := []struct {
+		name string
+		bs   [][]byte
+		rs   *ndp.RouterSolicitation
+		ok   bool
+	}{
+		{
+			name: "bad, short",
+			bs:   [][]byte{{0x00}},
+		},
+		{
+			name: "ok",
+			bs: [][]byte{
+				{0x00, 0x00, 0x00, 0x00},
+			},
+			rs: &ndp.RouterSolicitation{},
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rs := new(ndp.RouterSolicitation)
+			err := rs.UnmarshalBinary(merge(tt.bs))
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			if diff := cmp.Diff(tt.rs, rs); diff != "" {
+				t.Fatalf("unexpected router solicitation (-want +got):\n%s", diff)
 			}
 		})
 	}
