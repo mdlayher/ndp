@@ -30,9 +30,10 @@ func sendRS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr) error {
 			return fmt.Errorf("failed to write router solicitation: %v", err)
 		}
 
-		ra, err := receiveRA(c)
+		ra, from, err := receiveRA(c)
 		if err == nil {
-			printRA(ll, ra)
+			fmt.Println()
+			printRA(ll, ra, from)
 			return nil
 		}
 
@@ -55,15 +56,15 @@ func sendRS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr) error {
 	}
 }
 
-func receiveRA(c *ndp.Conn) (*ndp.RouterAdvertisement, error) {
+func receiveRA(c *ndp.Conn) (*ndp.RouterAdvertisement, net.IP, error) {
 	if err := c.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for {
-		msg, _, _, err := c.ReadFrom()
+		msg, _, from, err := c.ReadFrom()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		ra, ok := msg.(*ndp.RouterAdvertisement)
@@ -71,19 +72,19 @@ func receiveRA(c *ndp.Conn) (*ndp.RouterAdvertisement, error) {
 			continue
 		}
 
-		return ra, nil
+		return ra, from, nil
 	}
 }
 
-func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement) {
+func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 	var opts string
 	for _, o := range ra.Options {
 		opts += fmt.Sprintf("        - %s\n", optStr(o))
 	}
 
-	fmt.Println()
 	ll.Printf(
 		raFormat,
+		from.String(),
 		ra.CurrentHopLimit,
 		ra.ManagedConfiguration,
 		ra.OtherConfiguration,
@@ -94,7 +95,7 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement) {
 	)
 }
 
-const raFormat = `router advertisement:
+const raFormat = `router advertisement from: %s:
     - hop limit:        %d
     - managed:          %t
     - other:            %t
@@ -113,9 +114,53 @@ func optStr(o ndp.Option) string {
 		}
 
 		return fmt.Sprintf("%s link-layer address: %s", dir, o.Addr.String())
+	case *ndp.MTU:
+		return fmt.Sprintf("MTU: %d", *o)
+	case *ndp.PrefixInformation:
+		flags := "["
+		if o.OnLink {
+			flags += "O"
+		}
+		if o.AutonomousAddressConfiguration {
+			flags += "A"
+		}
+		flags += "]"
+
+		return fmt.Sprintf("prefix information: %s/%d, flags: %s, valid: %s, preferred: %s",
+			o.Prefix.String(),
+			o.PrefixLength,
+			flags,
+			o.ValidLifetime,
+			o.PreferredLifetime,
+		)
 	case *ndp.RawOption:
 		return fmt.Sprintf("type: %03d, value: %v", o.Type, o.Value)
 	default:
 		panic(fmt.Sprintf("unrecognized option: %v", o))
 	}
 }
+
+func printNA(ll *log.Logger, na *ndp.NeighborAdvertisement, from net.IP) {
+	var opts string
+	for _, o := range na.Options {
+		opts += fmt.Sprintf("        - %s\n", optStr(o))
+	}
+
+	ll.Printf(
+		naFormat,
+		from.String(),
+		na.Router,
+		na.Solicited,
+		na.Override,
+		na.TargetAddress.String(),
+		opts,
+	)
+}
+
+const naFormat = `neighbor advertisement from %s:
+    - router:         %t
+    - solicited:      %t
+    - override:       %t
+    - target address: %s
+    - options:
+%s`
