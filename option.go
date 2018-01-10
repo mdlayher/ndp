@@ -207,6 +207,11 @@ func (pi *PrefixInformation) UnmarshalBinary(b []byte) error {
 		return err
 	}
 
+	// Guard against incorrect option length.
+	if raw.Length != piOptLen {
+		return io.ErrUnexpectedEOF
+	}
+
 	var (
 		oFlag = (raw.Value[1] & 0x80) != 0
 		aFlag = (raw.Value[1] & 0x40) != 0
@@ -333,16 +338,17 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(RawOption)
 		}
 
+		// Verify that we won't advance beyond the end of the byte slice.
+		if l > len(b[i:]) {
+			return nil, io.ErrUnexpectedEOF
+		}
+
 		// Unmarshal at the current offset, up to the expected length.
 		if err := o.UnmarshalBinary(b[i : i+l]); err != nil {
 			return nil, err
 		}
 
-		// Verify that we won't advance beyond the end of the byte slice, and
 		// Advance to the next option's type field.
-		if l > len(b[i:]) {
-			return nil, io.ErrUnexpectedEOF
-		}
 		i += l
 
 		options = append(options, o)
