@@ -16,7 +16,8 @@ import (
 
 func main() {
 	var (
-		ifiFlag = flag.String("i", "eth0", "network interface to use for NDP communication")
+		ifiFlag  = flag.String("i", "eth0", "network interface to use for NDP communication")
+		addrFlag = flag.String("a", string(ndp.LinkLocal), "address to use for NDP communication (unspecified, linklocal, uniquelocal, global, or a literal IPv6 address)")
 	)
 
 	flag.Usage = func() {
@@ -33,7 +34,8 @@ func main() {
 		ll.Fatalf("failed to get interface %q: %v", *ifiFlag, err)
 	}
 
-	c, llAddr, err := ndp.Dial(ifi)
+	addr := ndp.Addr(*addrFlag)
+	c, ip, err := ndp.Dial(ifi, addr)
 	if err != nil {
 		ll.Fatalf("failed to dial NDP connection: %v", err)
 	}
@@ -50,8 +52,8 @@ func main() {
 		cancel()
 	}()
 
-	ll.Printf("interface: %s, link-layer address: %s, link-local IPv6 address: %s",
-		*ifiFlag, ifi.HardwareAddr, llAddr)
+	ll.Printf("interface: %s, link-layer address: %s, IPv6 address: %s",
+		*ifiFlag, ifi.HardwareAddr, ip)
 
 	if err := ndpcmd.Run(ctx, c, ifi, flag.Arg(0)); err != nil {
 		// Context cancel means a signal was sent, so no need to log an error.
@@ -66,8 +68,8 @@ func main() {
 const usage = `ndp: utility for working with the Neighbor Discovery Protocol.
 
 Examples:
-  Send router solicitations on interface eth0 until a router advertisement
-  is received.
+  Send router solicitations on interface eth0 from the interface's link-local
+  address until a router advertisement is received.
 
-    $ sudo ndp -i eth0 rs
+    $ sudo ndp -i eth0 -a linklocal rs
 `
