@@ -1,7 +1,6 @@
 package ndp
 
 import (
-	"fmt"
 	"net"
 
 	"golang.org/x/net/icmp"
@@ -120,7 +119,7 @@ func (c *Conn) WriteTo(m Message, cm *ipv6.ControlMessage, dst net.IP) error {
 }
 
 // linkLocalAddr searches for a valid IPv6 link-local address for the specified
-// interface.
+// interface.  If none is found, the IPv6 unspecified address "::" is returned.
 func linkLocalAddr(ifi *net.Interface) (*net.IPAddr, error) {
 	addrs, err := ifi.Addrs()
 	if err != nil {
@@ -147,5 +146,9 @@ func linkLocalAddr(ifi *net.Interface) (*net.IPAddr, error) {
 		}, nil
 	}
 
-	return nil, fmt.Errorf("ndp: no link local address for interface %q", ifi.Name)
+	// No link-local address on this interface, so use the unspecified address.
+	return &net.IPAddr{
+		IP:   net.IPv6zero,
+		Zone: ifi.Name,
+	}, nil
 }
