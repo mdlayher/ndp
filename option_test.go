@@ -99,7 +99,7 @@ func TestLinkLayerAddressUnmarshalBinary(t *testing.T) {
 	}{
 		{
 			name: "bad, short",
-			bs:   [][]byte{addr},
+			bs:   [][]byte{{0x01, 0x01, 0xff}},
 		},
 		{
 			name: "bad, invalid direction",
@@ -109,10 +109,10 @@ func TestLinkLayerAddressUnmarshalBinary(t *testing.T) {
 			},
 		},
 		{
-			name: "bad, invalid length",
+			name: "bad, long",
 			bs: [][]byte{
-				{0x01, 0x10},
-				addr,
+				{0x01, 0x02},
+				zero(16),
 			},
 		},
 		{
@@ -159,6 +159,121 @@ func TestLinkLayerAddressUnmarshalBinary(t *testing.T) {
 
 			if diff := cmp.Diff(tt.lla, lla); diff != "" {
 				t.Fatalf("unexpected link-layer address (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRawOptionMarshalUnmarshalBinary(t *testing.T) {
+	tests := []struct {
+		name string
+		ro   *ndp.RawOption
+		bs   [][]byte
+		ok   bool
+	}{
+		{
+			name: "bad, length",
+			ro: &ndp.RawOption{
+				Type:   1,
+				Length: 1,
+				Value:  zero(7),
+			},
+		},
+		{
+			name: "ok",
+			ro: &ndp.RawOption{
+				Type:   10,
+				Length: 2,
+				Value:  zero(14),
+			},
+			bs: [][]byte{
+				{0x0a, 0x02},
+				zero(14),
+			},
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := tt.ro.MarshalBinary()
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			ttb := merge(tt.bs)
+			if diff := cmp.Diff(ttb, b); diff != "" {
+				t.Fatalf("unexpected Option bytes (-want +got):\n%s", diff)
+			}
+
+			ro := new(ndp.RawOption)
+			if err := ro.UnmarshalBinary(b); err != nil {
+				t.Fatalf("failed to unmarshal binary: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.ro, ro); diff != "" {
+				t.Fatalf("unexpected raw option (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRawOptionUnmarshalBinary(t *testing.T) {
+	tests := []struct {
+		name string
+		bs   [][]byte
+		ro   *ndp.RawOption
+		ok   bool
+	}{
+		{
+			name: "bad, short",
+			bs:   [][]byte{{0x01}},
+		},
+		{
+			name: "bad, misleading length",
+			bs:   [][]byte{{0x10, 0x10}},
+		},
+		{
+			name: "ok",
+			bs: [][]byte{
+				{0xff, 0x02},
+				zero(14),
+			},
+			ro: &ndp.RawOption{
+				Type:   255,
+				Length: 2,
+				Value:  zero(14),
+			},
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ro := new(ndp.RawOption)
+			err := ro.UnmarshalBinary(merge(tt.bs))
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			if diff := cmp.Diff(tt.ro, ro); diff != "" {
+				t.Fatalf("unexpected raw option (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -1,6 +1,7 @@
 package ndp_test
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"reflect"
@@ -705,6 +706,10 @@ func merge(bs [][]byte) []byte {
 	}
 
 	return b
+}
+
+func zero(n int) []byte {
+	return bytes.Repeat([]byte{0x00}, n)
 }
 
 func mustIPv6(s string) net.IP {
