@@ -88,6 +88,56 @@ func TestLinkLayerAddressMarshalUnmarshalBinary(t *testing.T) {
 	}
 }
 
+func TestMTUMarshalUnmarshalBinary(t *testing.T) {
+	tests := []struct {
+		name string
+		m    *ndp.MTU
+		bs   [][]byte
+		ok   bool
+	}{
+		{
+			name: "ok",
+			m:    ndp.NewMTU(1500),
+			bs: [][]byte{
+				{0x05, 0x01, 0x00, 0x00},
+				{0x00, 0x00, 0x05, 0xdc},
+			},
+			ok: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := tt.m.MarshalBinary()
+
+			if err != nil && tt.ok {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err == nil && !tt.ok {
+				t.Fatal("expected an error, but none occurred")
+			}
+			if err != nil {
+				t.Logf("OK error: %v", err)
+				return
+			}
+
+			ttb := merge(tt.bs)
+			if diff := cmp.Diff(ttb, b); diff != "" {
+				t.Fatalf("unexpected Option bytes (-want +got):\n%s", diff)
+			}
+
+			m := new(ndp.MTU)
+			if err := m.UnmarshalBinary(b); err != nil {
+				t.Fatalf("failed to unmarshal binary: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.m, m); diff != "" {
+				t.Fatalf("unexpected MTU (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestRawOptionMarshalUnmarshalBinary(t *testing.T) {
 	tests := []struct {
 		name string
@@ -198,6 +248,16 @@ func TestOptionUnmarshalBinaryError(t *testing.T) {
 						{0x01, 0x02},
 						zero(16),
 					},
+				},
+			},
+		},
+		{
+			name: "mtu",
+			o:    new(ndp.MTU),
+			subs: []sub{
+				{
+					name: "short",
+					bs:   [][]byte{{0x01}},
 				},
 			},
 		},

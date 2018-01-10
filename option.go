@@ -2,6 +2,7 @@ package ndp
 
 import (
 	"encoding"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -11,13 +12,14 @@ const (
 	// Length of a link-layer address for Ethernet networks.
 	ethAddrLen = 6
 
-	// The assumed NDP option length (in units of 8 bytes) for a source or
-	// target link layer address option for Ethernet networks.
+	// The assumed NDP option length (in units of 8 bytes) for fixed length options.
 	llaOptLen = 1
+	mtuOptLen = 1
 
 	// Type values for each type of valid Option.
 	optSourceLLA = 1
 	optTargetLLA = 2
+	optMTU       = 5
 )
 
 // A Direction specifies the direction of a LinkLayerAddress Option as a source
@@ -90,6 +92,47 @@ func (lla *LinkLayerAddress) UnmarshalBinary(b []byte) error {
 		Direction: d,
 		Addr:      net.HardwareAddr(raw.Value),
 	}
+
+	return nil
+}
+
+var _ Option = new(MTU)
+
+// TODO(mdlayher): decide if this should just be a struct type instead.
+
+// An MTU is an MTU option, as described in RFC 4861, Section 4.6.1.
+type MTU uint32
+
+// NewMTU creates an MTU Option from an MTU value.
+func NewMTU(mtu uint32) *MTU {
+	m := MTU(mtu)
+	return &m
+}
+
+func (m *MTU) code() byte { return optMTU }
+
+// MarshalBinary implements Option.
+func (m *MTU) MarshalBinary() ([]byte, error) {
+	raw := &RawOption{
+		Type:   m.code(),
+		Length: mtuOptLen,
+		// 2 reserved bytes, 4 for MTU.
+		Value: make([]byte, 6),
+	}
+
+	binary.BigEndian.PutUint32(raw.Value[2:6], uint32(*m))
+
+	return raw.MarshalBinary()
+}
+
+// UnmarshalBinary implements Option.
+func (m *MTU) UnmarshalBinary(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.UnmarshalBinary(b); err != nil {
+		return err
+	}
+
+	*m = MTU(binary.BigEndian.Uint32(raw.Value[2:6]))
 
 	return nil
 }
@@ -179,6 +222,8 @@ func parseOptions(b []byte) ([]Option, error) {
 		switch t {
 		case optSourceLLA, optTargetLLA:
 			o = new(LinkLayerAddress)
+		case optMTU:
+			o = new(MTU)
 		default:
 			o = new(RawOption)
 		}

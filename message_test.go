@@ -507,6 +507,7 @@ func TestRouterAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 						Direction: ndp.Source,
 						Addr:      addr,
 					},
+					ndp.NewMTU(1280),
 				},
 			},
 			bs: [][]byte{
@@ -515,6 +516,9 @@ func TestRouterAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 				// Source LLA option.
 				{0x01, 0x01},
 				addr,
+				// MTU option.
+				{0x05, 0x01, 0x00, 0x00},
+				{0x00, 0x00, 0x05, 0x00},
 			},
 			ok: true,
 		},
