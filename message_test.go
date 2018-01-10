@@ -201,6 +201,19 @@ func TestParseMessage(t *testing.T) {
 			ok: true,
 		},
 		{
+			name: "ok, router advertisement",
+			bs: [][]byte{
+				{
+					134, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+					0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			m:  &ndp.RouterAdvertisement{},
+			ok: true,
+		},
+		{
 			name: "ok, router solicitation",
 			bs: [][]byte{
 				{
