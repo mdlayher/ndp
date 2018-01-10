@@ -18,6 +18,7 @@ const (
 
 // chooseAddr selects an Addr from the interface based on the specified Addr type.
 func chooseAddr(addrs []net.Addr, zone string, addr Addr) (*net.IPAddr, error) {
+	// Does the caller want an unspecified address?
 	if addr == Unspecified {
 		return &net.IPAddr{
 			IP:   net.IPv6unspecified,
@@ -25,6 +26,7 @@ func chooseAddr(addrs []net.Addr, zone string, addr Addr) (*net.IPAddr, error) {
 		}, nil
 	}
 
+	// Select an IPv6 address from the interface's addresses.
 	var match func(ip net.IP) bool
 	switch addr {
 	case LinkLocal:
