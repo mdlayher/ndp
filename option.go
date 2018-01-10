@@ -142,7 +142,7 @@ func parseOptions(b []byte) ([]Option, error) {
 
 		// Verify that we won't advance beyond the end of the byte slice, and
 		// Advance to the next option's type field.
-		if i+l > len(b[i:]) {
+		if l > len(b[i:]) {
 			return nil, io.ErrUnexpectedEOF
 		}
 		i += l
