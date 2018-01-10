@@ -2,9 +2,11 @@ package ndp
 
 import (
 	"encoding"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv6"
@@ -17,6 +19,7 @@ const (
 	// Minimum byte length values for each type of valid Message.
 	naLen = 20
 	nsLen = 20
+	raLen = 12
 	rsLen = 4
 )
 
@@ -69,6 +72,8 @@ func ParseMessage(b []byte) (Message, error) {
 		m = new(NeighborAdvertisement)
 	case ipv6.ICMPTypeNeighborSolicitation:
 		m = new(NeighborSolicitation)
+	case ipv6.ICMPTypeRouterAdvertisement:
+		m = new(RouterAdvertisement)
 	case ipv6.ICMPTypeRouterSolicitation:
 		m = new(RouterSolicitation)
 	default:
@@ -212,6 +217,88 @@ func (ns *NeighborSolicitation) UnmarshalBinary(b []byte) error {
 	}
 
 	copy(ns.TargetAddress, addr)
+
+	return nil
+}
+
+var _ Message = &RouterAdvertisement{}
+
+// A RouterAdvertisement is a Router Advertisement message as
+// described in RFC 4861, Section 4.1.
+type RouterAdvertisement struct {
+	CurrentHopLimit      uint8
+	ManagedConfiguration bool
+	OtherConfiguration   bool
+	RouterLifetime       time.Duration
+	ReachableTime        time.Duration
+	RetransmitTimer      time.Duration
+	Options              []Option
+}
+
+func (ra *RouterAdvertisement) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeRouterAdvertisement }
+
+// MarshalBinary implements Message.
+func (ra *RouterAdvertisement) MarshalBinary() ([]byte, error) {
+	b := make([]byte, raLen)
+
+	b[0] = ra.CurrentHopLimit
+
+	if ra.ManagedConfiguration {
+		b[1] |= (1 << 7)
+	}
+	if ra.OtherConfiguration {
+		b[1] |= (1 << 6)
+	}
+
+	lifetime := ra.RouterLifetime.Seconds()
+	binary.BigEndian.PutUint16(b[2:4], uint16(lifetime))
+
+	reach := ra.ReachableTime / time.Millisecond
+	binary.BigEndian.PutUint32(b[4:8], uint32(reach))
+
+	retrans := ra.RetransmitTimer / time.Millisecond
+	binary.BigEndian.PutUint32(b[8:12], uint32(retrans))
+
+	ob, err := marshalOptions(ra.Options)
+	if err != nil {
+		return nil, err
+	}
+
+	b = append(b, ob...)
+
+	return b, nil
+}
+
+// UnmarshalBinary implements Message.
+func (ra *RouterAdvertisement) UnmarshalBinary(b []byte) error {
+	if len(b) < raLen {
+		return io.ErrUnexpectedEOF
+	}
+
+	// Skip message body for options.
+	options, err := parseOptions(b[raLen:])
+	if err != nil {
+		return err
+	}
+
+	var (
+		mFlag = (b[1] & 0x80) != 0
+		oFlag = (b[1] & 0x40) != 0
+
+		lifetime = time.Duration(binary.BigEndian.Uint16(b[2:4])) * time.Second
+		reach    = time.Duration(binary.BigEndian.Uint32(b[4:8])) * time.Millisecond
+		retrans  = time.Duration(binary.BigEndian.Uint32(b[8:12])) * time.Millisecond
+	)
+
+	*ra = RouterAdvertisement{
+		CurrentHopLimit:      b[0],
+		ManagedConfiguration: mFlag,
+		OtherConfiguration:   oFlag,
+		RouterLifetime:       lifetime,
+		ReachableTime:        reach,
+		RetransmitTimer:      retrans,
+		Options:              options,
+	}
 
 	return nil
 }
