@@ -16,8 +16,7 @@ type Conn struct {
 	pc *ipv6.PacketConn
 	cm *ipv6.ControlMessage
 
-	allNodes *net.IPAddr
-	llAddr   *net.IPAddr
+	llAddr *net.IPAddr
 }
 
 // Dial dials a NDP connection using the specified interface.  It returns
@@ -33,16 +32,7 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 		return nil, nil, err
 	}
 
-	// Join the "all nodes" multicast group for this interface.
-	allNodes := &net.IPAddr{
-		IP:   net.IPv6linklocalallnodes,
-		Zone: ifi.Name,
-	}
-
 	pc := ic.IPv6PacketConn()
-	if err := pc.JoinGroup(ifi, allNodes); err != nil {
-		return nil, nil, err
-	}
 
 	// Calculate and place ICMPv6 checksum at correct offset in all messages.
 	const chkOff = 2
@@ -60,8 +50,7 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 			IfIndex:  ifi.Index,
 		},
 
-		allNodes: allNodes,
-		llAddr:   llAddr,
+		llAddr: llAddr,
 	}
 
 	return c, llAddr.IP, nil
