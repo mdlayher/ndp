@@ -378,65 +378,6 @@ func TestNeighborAdvertisementMarshalUnmarshalBinary(t *testing.T) {
 	}
 }
 
-func TestNeighborAdvertisementUnmarshalBinary(t *testing.T) {
-	ip := mustIPv6("2001:db8:dead:beef:f00::00d")
-
-	tests := []struct {
-		name string
-		bs   [][]byte
-		na   *ndp.NeighborAdvertisement
-		ok   bool
-	}{
-		{
-			name: "bad, short",
-			bs:   [][]byte{ip},
-		},
-		{
-			name: "bad, IPv4 mapped",
-			bs: [][]byte{
-				{0xe0, 0x00, 0x00, 0x00},
-				net.IPv4(192, 168, 1, 1),
-			},
-		},
-		{
-			name: "ok",
-			bs: [][]byte{
-				{0xe0, 0x00, 0x00, 0x00},
-				ip,
-			},
-			na: &ndp.NeighborAdvertisement{
-				Router:        true,
-				Solicited:     true,
-				Override:      true,
-				TargetAddress: ip,
-			},
-			ok: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			na := new(ndp.NeighborAdvertisement)
-			err := na.UnmarshalBinary(merge(tt.bs))
-
-			if err != nil && tt.ok {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if err == nil && !tt.ok {
-				t.Fatal("expected an error, but none occurred")
-			}
-			if err != nil {
-				t.Logf("OK error: %v", err)
-				return
-			}
-
-			if diff := cmp.Diff(tt.na, na); diff != "" {
-				t.Fatalf("unexpected neighbor advertisement (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 	ip := mustIPv6("2001:db8::1")
 	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
@@ -527,62 +468,6 @@ func TestNeighborSolicitationMarshalUnmarshalBinary(t *testing.T) {
 	}
 }
 
-func TestNeighborSolicitationUnmarshalBinary(t *testing.T) {
-	ip := mustIPv6("2001:db8:dead:beef:f00::00d")
-
-	tests := []struct {
-		name string
-		bs   [][]byte
-		ns   *ndp.NeighborSolicitation
-		ok   bool
-	}{
-		{
-			name: "bad, short",
-			bs:   [][]byte{ip},
-		},
-		{
-			name: "bad, IPv4 mapped",
-			bs: [][]byte{
-				{0xe0, 0x00, 0x00, 0x00},
-				net.IPv4(192, 168, 1, 1),
-			},
-		},
-		{
-			name: "ok",
-			bs: [][]byte{
-				{0x00, 0x00, 0x00, 0x00},
-				ip,
-			},
-			ns: &ndp.NeighborSolicitation{
-				TargetAddress: ip,
-			},
-			ok: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ns := new(ndp.NeighborSolicitation)
-			err := ns.UnmarshalBinary(merge(tt.bs))
-
-			if err != nil && tt.ok {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if err == nil && !tt.ok {
-				t.Fatal("expected an error, but none occurred")
-			}
-			if err != nil {
-				t.Logf("OK error: %v", err)
-				return
-			}
-
-			if diff := cmp.Diff(tt.ns, ns); diff != "" {
-				t.Fatalf("unexpected neighbor solicitation (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestRouterSolicitationMarshalUnmarshalBinary(t *testing.T) {
 	addr := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
 
@@ -655,45 +540,76 @@ func TestRouterSolicitationMarshalUnmarshalBinary(t *testing.T) {
 	}
 }
 
-func TestRouterSolicitationUnmarshalBinary(t *testing.T) {
-	tests := []struct {
+func TestMessageUnmarshalBinaryError(t *testing.T) {
+	type sub struct {
 		name string
 		bs   [][]byte
-		rs   *ndp.RouterSolicitation
-		ok   bool
+	}
+
+	tests := []struct {
+		name string
+		m    ndp.Message
+		subs []sub
 	}{
 		{
-			name: "bad, short",
-			bs:   [][]byte{{0x00}},
+			name: "NA",
+			m:    &ndp.NeighborAdvertisement{},
+			subs: []sub{
+				{
+					name: "short",
+					bs:   [][]byte{zero(16)},
+				},
+				{
+					name: "IPv4",
+					bs: [][]byte{
+						{0xe0, 0x00, 0x00, 0x00},
+						net.IPv4(192, 168, 1, 1),
+					},
+				},
+			},
 		},
 		{
-			name: "ok",
-			bs: [][]byte{
-				{0x00, 0x00, 0x00, 0x00},
+			name: "NS",
+			m:    &ndp.NeighborSolicitation{},
+			subs: []sub{
+				{
+					name: "bad, short",
+					bs:   [][]byte{zero(16)},
+				},
+				{
+					name: "bad, IPv4",
+					bs: [][]byte{
+						{0xe0, 0x00, 0x00, 0x00},
+						net.IPv4(192, 168, 1, 1),
+					},
+				},
 			},
-			rs: &ndp.RouterSolicitation{},
-			ok: true,
+		},
+		{
+			name: "RS",
+			m:    &ndp.RouterSolicitation{},
+			subs: []sub{
+				{
+					name: "short",
+					bs:   [][]byte{{0x00}},
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rs := new(ndp.RouterSolicitation)
-			err := rs.UnmarshalBinary(merge(tt.bs))
+			for _, st := range tt.subs {
+				t.Run(st.name, func(t *testing.T) {
+					err := tt.m.UnmarshalBinary(merge(st.bs))
 
-			if err != nil && tt.ok {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if err == nil && !tt.ok {
-				t.Fatal("expected an error, but none occurred")
-			}
-			if err != nil {
-				t.Logf("OK error: %v", err)
-				return
-			}
-
-			if diff := cmp.Diff(tt.rs, rs); diff != "" {
-				t.Fatalf("unexpected router solicitation (-want +got):\n%s", diff)
+					if err == nil {
+						t.Fatal("expected an error, but none occurred")
+					} else {
+						t.Logf("OK error: %v", err)
+						return
+					}
+				})
 			}
 		})
 	}
