@@ -6,7 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 )
+
+// Infinity indicates that a prefix is valid for an infinite amount of time,
+// unless a new, finite, value is received in a subsequent router advertisement.
+const Infinity = time.Duration(0xffffffff) * time.Second
 
 const (
 	// Length of a link-layer address for Ethernet networks.
@@ -14,12 +19,14 @@ const (
 
 	// The assumed NDP option length (in units of 8 bytes) for fixed length options.
 	llaOptLen = 1
+	piOptLen  = 4
 	mtuOptLen = 1
 
 	// Type values for each type of valid Option.
-	optSourceLLA = 1
-	optTargetLLA = 2
-	optMTU       = 5
+	optSourceLLA         = 1
+	optTargetLLA         = 2
+	optPrefixInformation = 3
+	optMTU               = 5
 )
 
 // A Direction specifies the direction of a LinkLayerAddress Option as a source
@@ -137,6 +144,102 @@ func (m *MTU) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+var _ Option = &PrefixInformation{}
+
+// An PrefixInformation is an PrefixInformation option, as described in RFC 4861, Section 4.6.1.
+type PrefixInformation struct {
+	PrefixLength                   uint8
+	OnLink                         bool
+	AutonomousAddressConfiguration bool
+	ValidLifetime                  time.Duration
+	PreferredLifetime              time.Duration
+	Prefix                         net.IP
+}
+
+func (pi *PrefixInformation) code() byte { return optPrefixInformation }
+
+// MarshalBinary implements Option.
+func (pi *PrefixInformation) MarshalBinary() ([]byte, error) {
+	// Per the RFC:
+	// "The bits in the prefix after the prefix length are reserved and MUST
+	// be initialized to zero by the sender and ignored by the receiver."
+	//
+	// Therefore, any prefix, when masked with its specified length, should be
+	// identical to the prefix itself for it to be valid.
+	mask := net.CIDRMask(int(pi.PrefixLength), 128)
+	if masked := pi.Prefix.Mask(mask); !pi.Prefix.Equal(masked) {
+		return nil, fmt.Errorf("ndp: invalid prefix information: %s/%d", pi.Prefix.String(), pi.PrefixLength)
+	}
+
+	raw := &RawOption{
+		Type:   pi.code(),
+		Length: piOptLen,
+		// 30 bytes for PrefixInformation body.
+		Value: make([]byte, 30),
+	}
+
+	raw.Value[0] = pi.PrefixLength
+
+	if pi.OnLink {
+		raw.Value[1] |= (1 << 7)
+	}
+	if pi.AutonomousAddressConfiguration {
+		raw.Value[1] |= (1 << 6)
+	}
+
+	valid := pi.ValidLifetime.Seconds()
+	binary.BigEndian.PutUint32(raw.Value[2:6], uint32(valid))
+
+	pref := pi.PreferredLifetime.Seconds()
+	binary.BigEndian.PutUint32(raw.Value[6:10], uint32(pref))
+
+	// 4 bytes reserved.
+
+	copy(raw.Value[14:30], pi.Prefix)
+
+	return raw.MarshalBinary()
+}
+
+// UnmarshalBinary implements Option.
+func (pi *PrefixInformation) UnmarshalBinary(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.UnmarshalBinary(b); err != nil {
+		return err
+	}
+
+	var (
+		oFlag = (raw.Value[1] & 0x80) != 0
+		aFlag = (raw.Value[1] & 0x40) != 0
+
+		valid     = time.Duration(binary.BigEndian.Uint32(raw.Value[2:6])) * time.Second
+		preferred = time.Duration(binary.BigEndian.Uint32(raw.Value[6:10])) * time.Second
+	)
+
+	// Skip reserved area.
+	addr := net.IP(raw.Value[14:30])
+	if err := checkIPv6(addr); err != nil {
+		return err
+	}
+
+	// Per the RFC, bits in prefix past prefix length are ignored by the
+	// receiver.
+	l := raw.Value[0]
+	mask := net.CIDRMask(int(l), 128)
+	addr = addr.Mask(mask)
+
+	*pi = PrefixInformation{
+		PrefixLength: l,
+		OnLink:       oFlag,
+		AutonomousAddressConfiguration: aFlag,
+		ValidLifetime:                  valid,
+		PreferredLifetime:              preferred,
+		// raw.Value is already a copy of b, so just point to the address.
+		Prefix: addr,
+	}
+
+	return nil
+}
+
 var _ Option = &RawOption{}
 
 // A RawOption is an Option in its raw and unprocessed format.  Options which
@@ -224,6 +327,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(LinkLayerAddress)
 		case optMTU:
 			o = new(MTU)
+		case optPrefixInformation:
+			o = new(PrefixInformation)
 		default:
 			o = new(RawOption)
 		}
