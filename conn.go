@@ -16,6 +16,7 @@ type Conn struct {
 	pc *ipv6.PacketConn
 	cm *ipv6.ControlMessage
 
+	ifi    *net.Interface
 	llAddr *net.IPAddr
 }
 
@@ -50,6 +51,7 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 			IfIndex:  ifi.Index,
 		},
 
+		ifi:    ifi,
 		llAddr: llAddr,
 	}
 
@@ -70,7 +72,7 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 // source network address.  Messages sourced from this machine and malformed or
 // unrecognized ICMPv6 messages are filtered.
 func (c *Conn) ReadFrom() (Message, *ipv6.ControlMessage, net.IP, error) {
-	b := make([]byte, 1280)
+	b := make([]byte, c.ifi.MTU)
 	for {
 		n, cm, src, err := c.pc.ReadFrom(b)
 		if err != nil {
@@ -108,7 +110,11 @@ func (c *Conn) WriteTo(m Message, cm *ipv6.ControlMessage, dst net.IP) error {
 		cm = c.cm
 	}
 
-	addr := &net.IPAddr{IP: dst}
+	addr := &net.IPAddr{
+		IP:   dst,
+		Zone: c.ifi.Name,
+	}
+
 	_, err = c.pc.WriteTo(b, cm, addr)
 	return err
 }
