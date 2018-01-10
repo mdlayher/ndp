@@ -75,6 +75,41 @@ func TestMarshalParseMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "router advertisement",
+			m: &ndp.RouterAdvertisement{
+				CurrentHopLimit:      10,
+				ManagedConfiguration: true,
+				OtherConfiguration:   true,
+				RouterLifetime:       30 * time.Second,
+				ReachableTime:        12345 * time.Millisecond,
+				RetransmitTimer:      23456 * time.Millisecond,
+				Options: []ndp.Option{
+					&ndp.LinkLayerAddress{
+						Direction: ndp.Source,
+						Addr:      addr,
+					},
+					ndp.NewMTU(1280),
+				},
+			},
+			bs: [][]byte{
+				// ICMPv6 header and RA message.
+				{
+					134, 0x00, 0x00, 0x00,
+					0x0a, 0xc0, 0x00, 0x1e, 0x00, 0x00, 0x30, 0x39, 0x00, 0x00, 0x5b, 0xa0,
+				},
+				// Source LLA option.
+				{
+					0x01, 0x01,
+				},
+				addr,
+				// MTU option.
+				{
+					0x05, 0x01, 0x00, 0x00,
+					0x00, 0x00, 0x05, 0x00,
+				},
+			},
+		},
+		{
 			name: "router solicitation",
 			m: &ndp.RouterSolicitation{
 				Options: []ndp.Option{
