@@ -2,6 +2,7 @@ package ndp
 
 import (
 	"net"
+	"time"
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv6"
@@ -69,6 +70,11 @@ func Dial(ifi *net.Interface) (*Conn, net.IP, error) {
 // Close closes the Conn's underlying connection.
 func (c *Conn) Close() error {
 	return c.pc.Close()
+}
+
+// SetReadDeadline sets a deadline for the next NDP message to arrive.
+func (c *Conn) SetReadDeadline(t time.Time) error {
+	return c.pc.SetReadDeadline(t)
 }
 
 // ReadFrom reads a Message from the Conn and returns its control message and
