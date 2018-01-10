@@ -14,7 +14,7 @@ func TestLinkLayerAddressMarshalUnmarshalBinary(t *testing.T) {
 	tests := []struct {
 		name string
 		lla  *ndp.LinkLayerAddress
-		b    []byte
+		bs   [][]byte
 		ok   bool
 	}{
 		{
@@ -36,10 +36,10 @@ func TestLinkLayerAddressMarshalUnmarshalBinary(t *testing.T) {
 				Direction: ndp.Source,
 				Addr:      addr,
 			},
-			b: append([]byte{
-				0x01,
-				0x01,
-			}, addr...),
+			bs: [][]byte{
+				{0x01, 0x01},
+				addr,
+			},
 			ok: true,
 		},
 		{
@@ -48,10 +48,10 @@ func TestLinkLayerAddressMarshalUnmarshalBinary(t *testing.T) {
 				Direction: ndp.Target,
 				Addr:      addr,
 			},
-			b: append([]byte{
-				0x02,
-				0x01,
-			}, addr...),
+			bs: [][]byte{
+				{0x02, 0x01},
+				addr,
+			},
 			ok: true,
 		},
 	}
@@ -71,7 +71,8 @@ func TestLinkLayerAddressMarshalUnmarshalBinary(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.b, b); diff != "" {
+			ttb := merge(tt.bs)
+			if diff := cmp.Diff(ttb, b); diff != "" {
 				t.Fatalf("unexpected Option bytes (-want +got):\n%s", diff)
 			}
 
@@ -92,34 +93,34 @@ func TestLinkLayerAddressUnmarshalBinary(t *testing.T) {
 
 	tests := []struct {
 		name string
-		b    []byte
+		bs   [][]byte
 		lla  *ndp.LinkLayerAddress
 		ok   bool
 	}{
 		{
 			name: "bad, short",
-			b:    addr,
+			bs:   [][]byte{addr},
 		},
 		{
 			name: "bad, invalid direction",
-			b: append([]byte{
-				0x10,
-				0x01,
-			}, addr...),
+			bs: [][]byte{
+				{0x10, 0x01},
+				addr,
+			},
 		},
 		{
 			name: "bad, invalid length",
-			b: append([]byte{
-				0x01,
-				0x10,
-			}, addr...),
+			bs: [][]byte{
+				{0x01, 0x10},
+				addr,
+			},
 		},
 		{
 			name: "ok, source",
-			b: append([]byte{
-				0x01,
-				0x01,
-			}, addr...),
+			bs: [][]byte{
+				{0x01, 0x01},
+				addr,
+			},
 			lla: &ndp.LinkLayerAddress{
 				Direction: ndp.Source,
 				Addr:      addr,
@@ -128,10 +129,10 @@ func TestLinkLayerAddressUnmarshalBinary(t *testing.T) {
 		},
 		{
 			name: "ok, target",
-			b: append([]byte{
-				0x02,
-				0x01,
-			}, addr...),
+			bs: [][]byte{
+				{0x02, 0x01},
+				addr,
+			},
 			lla: &ndp.LinkLayerAddress{
 				Direction: ndp.Target,
 				Addr:      addr,
@@ -143,7 +144,7 @@ func TestLinkLayerAddressUnmarshalBinary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lla := new(ndp.LinkLayerAddress)
-			err := lla.UnmarshalBinary(tt.b)
+			err := lla.UnmarshalBinary(merge(tt.bs))
 
 			if err != nil && tt.ok {
 				t.Fatalf("unexpected error: %v", err)
