@@ -1,20 +1,13 @@
 package ndp_test
 
 import (
-	"bytes"
-	"fmt"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/mdlayher/ndp"
-)
-
-// Shared test data for commonly needed data types.
-var (
-	testIP  = mustIPv6("2001:db8::1")
-	testMAC = net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
+	"github.com/mdlayher/ndp/internal/ndptest"
 )
 
 // A messageSub is a sub-test structure for Message marshal/unmarshal tests.
@@ -71,7 +64,7 @@ func TestMarshalParseMessage(t *testing.T) {
 					}
 
 					// ICMPv6 header precedes the message bytes.
-					ttb := append(tt.header, merge(st.bs)...)
+					ttb := append(tt.header, ndptest.Merge(st.bs)...)
 					if diff := cmp.Diff(ttb, b); diff != "" {
 						t.Fatalf("unexpected message bytes (-want +got):\n%s", diff)
 					}
@@ -125,7 +118,7 @@ func TestParseMessageError(t *testing.T) {
 			subs: []sub{
 				{
 					name: "short",
-					bs:   [][]byte{zero(16)},
+					bs:   [][]byte{ndptest.Zero(16)},
 				},
 				{
 					name: "IPv4",
@@ -142,7 +135,7 @@ func TestParseMessageError(t *testing.T) {
 			subs: []sub{
 				{
 					name: "bad, short",
-					bs:   [][]byte{zero(16)},
+					bs:   [][]byte{ndptest.Zero(16)},
 				},
 				{
 					name: "bad, IPv4",
@@ -179,7 +172,7 @@ func TestParseMessageError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, st := range tt.subs {
 				t.Run(st.name, func(t *testing.T) {
-					ttb := append(tt.header, merge(st.bs)...)
+					ttb := append(tt.header, ndptest.Merge(st.bs)...)
 					if _, err := ndp.ParseMessage(ttb); err == nil {
 						t.Fatal("expected an error, but none occurred")
 					}
@@ -206,11 +199,11 @@ func naTests() []messageSub {
 		{
 			name: "ok, no flags",
 			m: &ndp.NeighborAdvertisement{
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 			},
 			bs: [][]byte{
 				{0x00, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 			},
 			ok: true,
 		},
@@ -218,11 +211,11 @@ func naTests() []messageSub {
 			name: "ok, router",
 			m: &ndp.NeighborAdvertisement{
 				Router:        true,
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 			},
 			bs: [][]byte{
 				{0x80, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 			},
 			ok: true,
 		},
@@ -230,11 +223,11 @@ func naTests() []messageSub {
 			name: "ok, solicited",
 			m: &ndp.NeighborAdvertisement{
 				Solicited:     true,
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 			},
 			bs: [][]byte{
 				{0x40, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 			},
 			ok: true,
 		},
@@ -242,11 +235,11 @@ func naTests() []messageSub {
 			name: "ok, override",
 			m: &ndp.NeighborAdvertisement{
 				Override:      true,
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 			},
 			bs: [][]byte{
 				{0x20, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 			},
 			ok: true,
 		},
@@ -256,11 +249,11 @@ func naTests() []messageSub {
 				Router:        true,
 				Solicited:     true,
 				Override:      true,
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 			},
 			bs: [][]byte{
 				{0xe0, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 			},
 			ok: true,
 		},
@@ -270,21 +263,21 @@ func naTests() []messageSub {
 				Router:        true,
 				Solicited:     true,
 				Override:      true,
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 				Options: []ndp.Option{
 					&ndp.LinkLayerAddress{
 						Direction: ndp.Target,
-						Addr:      testMAC,
+						Addr:      ndptest.MAC,
 					},
 				},
 			},
 			bs: [][]byte{
 				// NA message.
 				{0xe0, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 				// Target LLA option.
 				{0x02, 0x01},
-				testMAC,
+				ndptest.MAC,
 			},
 			ok: true,
 		},
@@ -308,32 +301,32 @@ func nsTests() []messageSub {
 		{
 			name: "ok, no options",
 			m: &ndp.NeighborSolicitation{
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 			},
 			bs: [][]byte{
 				{0x00, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 			},
 			ok: true,
 		},
 		{
 			name: "ok, with source LLA",
 			m: &ndp.NeighborSolicitation{
-				TargetAddress: testIP,
+				TargetAddress: ndptest.IP,
 				Options: []ndp.Option{
 					&ndp.LinkLayerAddress{
 						Direction: ndp.Source,
-						Addr:      testMAC,
+						Addr:      ndptest.MAC,
 					},
 				},
 			},
 			bs: [][]byte{
 				// NS message.
 				[]byte{0x00, 0x00, 0x00, 0x00},
-				testIP,
+				ndptest.IP,
 				// Source LLA option.
 				[]byte{0x01, 0x01},
-				testMAC,
+				ndptest.MAC,
 			},
 			ok: true,
 		},
@@ -369,7 +362,7 @@ func raTests() []messageSub {
 				Options: []ndp.Option{
 					&ndp.LinkLayerAddress{
 						Direction: ndp.Source,
-						Addr:      testMAC,
+						Addr:      ndptest.MAC,
 					},
 					ndp.NewMTU(1280),
 				},
@@ -379,7 +372,7 @@ func raTests() []messageSub {
 				{0x0a, 0xc0, 0x00, 0x1e, 0x00, 0x00, 0x30, 0x39, 0x00, 0x00, 0x5b, 0xa0},
 				// Source LLA option.
 				{0x01, 0x01},
-				testMAC,
+				ndptest.MAC,
 				// MTU option.
 				{0x05, 0x01, 0x00, 0x00},
 				{0x00, 0x00, 0x05, 0x00},
@@ -405,7 +398,7 @@ func rsTests() []messageSub {
 				Options: []ndp.Option{
 					&ndp.LinkLayerAddress{
 						Direction: ndp.Source,
-						Addr:      testMAC,
+						Addr:      ndptest.MAC,
 					},
 				},
 			},
@@ -414,31 +407,9 @@ func rsTests() []messageSub {
 				[]byte{0x00, 0x00, 0x00, 0x00},
 				// Source LLA option.
 				[]byte{0x01, 0x01},
-				testMAC,
+				ndptest.MAC,
 			},
 			ok: true,
 		},
 	}
-}
-
-func merge(bs [][]byte) []byte {
-	var b []byte
-	for _, bb := range bs {
-		b = append(b, bb...)
-	}
-
-	return b
-}
-
-func zero(n int) []byte {
-	return bytes.Repeat([]byte{0x00}, n)
-}
-
-func mustIPv6(s string) net.IP {
-	ip := net.ParseIP(s)
-	if ip == nil || ip.To4() != nil {
-		panic(fmt.Sprintf("invalid IPv6 address: %q", s))
-	}
-
-	return ip
 }
