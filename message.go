@@ -1,7 +1,6 @@
 package ndp
 
 import (
-	"encoding"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -25,10 +24,12 @@ const (
 
 // A Message is a Neighbor Discovery Protocol message.
 type Message interface {
-	encoding.BinaryMarshaler
-	encoding.BinaryUnmarshaler
+	// Type specifies the ICMPv6 type for a Message.
+	Type() ipv6.ICMPType
 
-	icmpType() ipv6.ICMPType
+	// Called via MarshalMessage and ParseMessage.
+	marshal() ([]byte, error)
+	unmarshal(b []byte) error
 }
 
 // MarshalMessage marshals a Message into its binary form and prepends an
@@ -37,13 +38,13 @@ type Message interface {
 // It is assumed that the operating system or caller will calculate and place
 // the ICMPv6 checksum in the result.
 func MarshalMessage(m Message) ([]byte, error) {
-	mb, err := m.MarshalBinary()
+	mb, err := m.marshal()
 	if err != nil {
 		return nil, err
 	}
 
 	im := icmp.Message{
-		Type: m.icmpType(),
+		Type: m.Type(),
 		// Always zero.
 		Code: 0,
 		// Calculated by caller or OS.
@@ -80,7 +81,7 @@ func ParseMessage(b []byte) (Message, error) {
 		return nil, fmt.Errorf("ndp: unrecognized ICMPv6 type: %d", t)
 	}
 
-	if err := m.UnmarshalBinary(b[icmpLen:]); err != nil {
+	if err := m.unmarshal(b[icmpLen:]); err != nil {
 		return nil, err
 	}
 
@@ -99,10 +100,10 @@ type NeighborAdvertisement struct {
 	Options       []Option
 }
 
-func (na *NeighborAdvertisement) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeNeighborAdvertisement }
+// Type implements Message.
+func (na *NeighborAdvertisement) Type() ipv6.ICMPType { return ipv6.ICMPTypeNeighborAdvertisement }
 
-// MarshalBinary implements Message.
-func (na *NeighborAdvertisement) MarshalBinary() ([]byte, error) {
+func (na *NeighborAdvertisement) marshal() ([]byte, error) {
 	if err := checkIPv6(na.TargetAddress); err != nil {
 		return nil, err
 	}
@@ -131,8 +132,7 @@ func (na *NeighborAdvertisement) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-// UnmarshalBinary implements Message.
-func (na *NeighborAdvertisement) UnmarshalBinary(b []byte) error {
+func (na *NeighborAdvertisement) unmarshal(b []byte) error {
 	if len(b) < naLen {
 		return io.ErrUnexpectedEOF
 	}
@@ -172,10 +172,10 @@ type NeighborSolicitation struct {
 	Options       []Option
 }
 
-func (ns *NeighborSolicitation) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeNeighborSolicitation }
+// Type implements Message.
+func (ns *NeighborSolicitation) Type() ipv6.ICMPType { return ipv6.ICMPTypeNeighborSolicitation }
 
-// MarshalBinary implements Message.
-func (ns *NeighborSolicitation) MarshalBinary() ([]byte, error) {
+func (ns *NeighborSolicitation) marshal() ([]byte, error) {
 	if err := checkIPv6(ns.TargetAddress); err != nil {
 		return nil, err
 	}
@@ -193,8 +193,7 @@ func (ns *NeighborSolicitation) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-// UnmarshalBinary implements Message.
-func (ns *NeighborSolicitation) UnmarshalBinary(b []byte) error {
+func (ns *NeighborSolicitation) unmarshal(b []byte) error {
 	if len(b) < nsLen {
 		return io.ErrUnexpectedEOF
 	}
@@ -235,10 +234,10 @@ type RouterAdvertisement struct {
 	Options              []Option
 }
 
-func (ra *RouterAdvertisement) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeRouterAdvertisement }
+// Type implements Message.
+func (ra *RouterAdvertisement) Type() ipv6.ICMPType { return ipv6.ICMPTypeRouterAdvertisement }
 
-// MarshalBinary implements Message.
-func (ra *RouterAdvertisement) MarshalBinary() ([]byte, error) {
+func (ra *RouterAdvertisement) marshal() ([]byte, error) {
 	b := make([]byte, raLen)
 
 	b[0] = ra.CurrentHopLimit
@@ -269,8 +268,7 @@ func (ra *RouterAdvertisement) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-// UnmarshalBinary implements Message.
-func (ra *RouterAdvertisement) UnmarshalBinary(b []byte) error {
+func (ra *RouterAdvertisement) unmarshal(b []byte) error {
 	if len(b) < raLen {
 		return io.ErrUnexpectedEOF
 	}
@@ -311,10 +309,10 @@ type RouterSolicitation struct {
 	Options []Option
 }
 
-func (rs *RouterSolicitation) icmpType() ipv6.ICMPType { return ipv6.ICMPTypeRouterSolicitation }
+// Type implements Message.
+func (rs *RouterSolicitation) Type() ipv6.ICMPType { return ipv6.ICMPTypeRouterSolicitation }
 
-// MarshalBinary implements Message.
-func (rs *RouterSolicitation) MarshalBinary() ([]byte, error) {
+func (rs *RouterSolicitation) marshal() ([]byte, error) {
 	// b contains reserved area.
 	b := make([]byte, rsLen)
 
@@ -328,8 +326,7 @@ func (rs *RouterSolicitation) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-// UnmarshalBinary implements Message.
-func (rs *RouterSolicitation) UnmarshalBinary(b []byte) error {
+func (rs *RouterSolicitation) unmarshal(b []byte) error {
 	if len(b) < rsLen {
 		return io.ErrUnexpectedEOF
 	}
