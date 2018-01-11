@@ -164,7 +164,7 @@ func TestOptionUnmarshalError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, st := range tt.subs {
 				t.Run(st.name, func(t *testing.T) {
-					err := tt.o.UnmarshalBinary(ndptest.Merge(st.bs))
+					err := tt.o.unmarshal(ndptest.Merge(st.bs))
 
 					if err == nil {
 						t.Fatal("expected an error, but none occurred")
@@ -205,7 +205,7 @@ func TestPrefixInformationUnmarshalPrefixLength(t *testing.T) {
 	}
 
 	pi := new(PrefixInformation)
-	if err := pi.UnmarshalBinary(ndptest.Merge(bs)); err != nil {
+	if err := pi.unmarshal(ndptest.Merge(bs)); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
