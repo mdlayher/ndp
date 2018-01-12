@@ -287,8 +287,9 @@ func (u *RawOption) unmarshal(b []byte) error {
 	// Exclude type and length fields from value's length.
 	l := int(u.Length*8) - 2
 
-	if l > len(b[2:]) {
-		return io.ErrUnexpectedEOF
+	// Enforce a valid length value that matches the expected one.
+	if lb := len(b[2:]); l != lb {
+		return fmt.Errorf("ndp: option value byte length should be %d, but length is %d", l, lb)
 	}
 
 	u.Value = make([]byte, l)
