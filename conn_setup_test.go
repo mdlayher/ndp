@@ -68,7 +68,7 @@ func icmpConn(t *testing.T, ifi *net.Interface) (*Conn, net.IP) {
 			t.Fatalf("failed to dial NDP: %v", err)
 		}
 
-		t.Skipf("permission denied, cannot test ICMPv6 NDP: %v", oerr.Err)
+		t.Skipf("permission denied, cannot test ICMPv6 NDP: %v", oerr)
 	}
 	c.icmpTest = true
 
