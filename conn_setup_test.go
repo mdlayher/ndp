@@ -32,7 +32,8 @@ func testUDPConn(t *testing.T) (*Conn, *Conn, net.IP, func()) {
 
 	addr, err := chooseAddr(addrs, ifi.Name, LinkLocal)
 	if err != nil {
-		t.Fatalf("failed to choose address: %v", err)
+		// TODO(mdlayher): remove when travis can do IPv6.
+		t.Skipf("failed to choose address, skipping test: %v", err)
 	}
 
 	// Create two UDPv6 connections and instruct them to communicate
