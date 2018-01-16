@@ -336,6 +336,18 @@ func nsTests() []messageSub {
 func raTests() []messageSub {
 	return []messageSub{
 		{
+			name: "bad, reserved prf",
+			m: &ndp.RouterAdvertisement{
+				RouterSelectionPreference: 2,
+			},
+		},
+		{
+			name: "bad, unknown prf",
+			m: &ndp.RouterAdvertisement{
+				RouterSelectionPreference: 4,
+			},
+		},
+		{
 			name: "ok, no options",
 			m: &ndp.RouterAdvertisement{
 				CurrentHopLimit:      10,
@@ -353,12 +365,13 @@ func raTests() []messageSub {
 		{
 			name: "ok, with options",
 			m: &ndp.RouterAdvertisement{
-				CurrentHopLimit:      10,
-				ManagedConfiguration: true,
-				OtherConfiguration:   true,
-				RouterLifetime:       30 * time.Second,
-				ReachableTime:        12345 * time.Millisecond,
-				RetransmitTimer:      23456 * time.Millisecond,
+				CurrentHopLimit:           10,
+				ManagedConfiguration:      true,
+				OtherConfiguration:        true,
+				RouterSelectionPreference: ndp.Medium,
+				RouterLifetime:            30 * time.Second,
+				ReachableTime:             12345 * time.Millisecond,
+				RetransmitTimer:           23456 * time.Millisecond,
 				Options: []ndp.Option{
 					&ndp.LinkLayerAddress{
 						Direction: ndp.Source,
@@ -376,6 +389,28 @@ func raTests() []messageSub {
 				// MTU option.
 				{0x05, 0x01, 0x00, 0x00},
 				{0x00, 0x00, 0x05, 0x00},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, new flags",
+			m: &ndp.RouterAdvertisement{
+				MobileIPv6HomeAgent:       true,
+				RouterSelectionPreference: ndp.Low,
+				NeighborDiscoveryProxy:    true,
+			},
+			bs: [][]byte{
+				[]byte{0x0, 0x3c, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, prf high",
+			m: &ndp.RouterAdvertisement{
+				RouterSelectionPreference: ndp.High,
+			},
+			bs: [][]byte{
+				[]byte{0x0, 0x08, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 			},
 			ok: true,
 		},
