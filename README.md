@@ -6,7 +6,7 @@ Package `ndp` implements the Neighbor Discovery Protocol, as described in
 
 The command `ndp` is a utility for working with the Neighbor Discovery Protocol.
 
-Examples:
+## Examples
 
 Listen for incoming NDP messages on interface eth0 to one of the interface's
 global unicast addresses.
