@@ -51,6 +51,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			name: "prefix information",
 			subs: piTests(),
 		},
+		{
+			name: "recursive DNS servers",
+			subs: rdnssTests(),
+		},
 	}
 
 	for _, tt := range tests {
@@ -336,6 +340,60 @@ func roTests() []optionSub {
 			bs: [][]byte{
 				{0x0a, 0x02},
 				ndptest.Zero(14),
+			},
+			ok: true,
+		},
+	}
+}
+
+func rdnssTests() []optionSub {
+	first := net.ParseIP("2001:db8::1")
+	second := net.ParseIP("2001:db8::2")
+
+	return []optionSub{
+		{
+			name: "bad, no servers",
+			os: []Option{
+				&RecursiveDNSServer{
+					Lifetime: 1 * time.Second,
+				},
+			},
+		},
+		{
+			name: "ok, one server",
+			os: []Option{
+				&RecursiveDNSServer{
+					Lifetime: 1 * time.Hour,
+					Servers: []net.IP{
+						first,
+					},
+				},
+			},
+			bs: [][]byte{
+				{25, 3},
+				{0x00, 0x00},
+				{0x00, 0x00, 0x0e, 0x10},
+				first,
+			},
+			ok: true,
+		},
+		{
+			name: "ok, two servers",
+			os: []Option{
+				&RecursiveDNSServer{
+					Lifetime: 24 * time.Hour,
+					Servers: []net.IP{
+						first,
+						second,
+					},
+				},
+			},
+			bs: [][]byte{
+				{25, 5},
+				{0x00, 0x00},
+				{0x00, 0x01, 0x51, 0x80},
+				first,
+				second,
 			},
 			ok: true,
 		},
