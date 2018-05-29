@@ -16,6 +16,13 @@ func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target net.
 
 	ll.Printf("neighbor solicitation:\n    - source link-layer address: %s", addr.String())
 
+	// Always multicast the message to the target's solicited-node multicast
+	// group as if we have no knowledge of its MAC address.
+	snm, err := ndp.SolicitedNodeMulticast(target)
+	if err != nil {
+		return fmt.Errorf("failed to determine solicited-node multicast address: %v", err)
+	}
+
 	m := &ndp.NeighborSolicitation{
 		TargetAddress: target,
 		Options: []ndp.Option{
@@ -27,7 +34,7 @@ func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target net.
 	}
 
 	for i := 0; ; i++ {
-		if err := c.WriteTo(m, nil, target); err != nil {
+		if err := c.WriteTo(m, nil, snm); err != nil {
 			return fmt.Errorf("failed to write neighbor solicitation: %v", err)
 		}
 
