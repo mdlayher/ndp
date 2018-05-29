@@ -13,10 +13,12 @@ import (
 )
 
 // Run runs the ndp utility.
-func Run(ctx context.Context, c *ndp.Conn, ifi *net.Interface, op string) error {
+func Run(ctx context.Context, c *ndp.Conn, ifi *net.Interface, op string, target net.IP) error {
 	switch op {
 	case "listen":
 		return listen(ctx, c)
+	case "ns":
+		return sendNS(ctx, c, ifi.HardwareAddr, target)
 	case "rs":
 		return sendRS(ctx, c, ifi.HardwareAddr)
 	default:

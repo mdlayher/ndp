@@ -16,8 +16,9 @@ import (
 
 func main() {
 	var (
-		ifiFlag  = flag.String("i", "eth0", "network interface to use for NDP communication")
-		addrFlag = flag.String("a", string(ndp.LinkLocal), "address to use for NDP communication (unspecified, linklocal, uniquelocal, global, or a literal IPv6 address)")
+		ifiFlag    = flag.String("i", "eth0", "network interface to use for NDP communication")
+		addrFlag   = flag.String("a", string(ndp.LinkLocal), "address to use for NDP communication (unspecified, linklocal, uniquelocal, global, or a literal IPv6 address)")
+		targetFlag = flag.String("t", "", "IPv6 target address for neighbor solicitation NDP messages")
 	)
 
 	flag.Usage = func() {
@@ -41,6 +42,14 @@ func main() {
 	}
 	defer c.Close()
 
+	var target net.IP
+	if t := *targetFlag; t != "" {
+		target = net.ParseIP(t)
+		if target == nil {
+			ll.Fatalf("failed to parse IPv6 address %q", t)
+		}
+	}
+
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, os.Interrupt)
 
@@ -55,7 +64,7 @@ func main() {
 	ll.Printf("interface: %s, link-layer address: %s, IPv6 address: %s",
 		*ifiFlag, ifi.HardwareAddr, ip)
 
-	if err := ndpcmd.Run(ctx, c, ifi, flag.Arg(0)); err != nil {
+	if err := ndpcmd.Run(ctx, c, ifi, flag.Arg(0), target); err != nil {
 		// Context cancel means a signal was sent, so no need to log an error.
 		if err == context.Canceled {
 			os.Exit(1)
