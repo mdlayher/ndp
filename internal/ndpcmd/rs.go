@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mdlayher/ndp"
@@ -148,6 +149,14 @@ func optStr(o ndp.Option) string {
 		)
 	case *ndp.RawOption:
 		return fmt.Sprintf("type: %03d, value: %v", o.Type, o.Value)
+	case *ndp.RecursiveDNSServer:
+		var ss []string
+		for _, s := range o.Servers {
+			ss = append(ss, s.String())
+		}
+		servers := strings.Join(ss, ", ")
+
+		return fmt.Sprintf("recursive DNS servers: lifetime: %s, servers: %s", o.Lifetime, servers)
 	default:
 		panic(fmt.Sprintf("unrecognized option: %v", o))
 	}
