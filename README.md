@@ -28,6 +28,13 @@ address until a router advertisement is received.
 $ sudo ndp -i eth0 -a linklocal rs
 ```
 
+Send neighbor solicitations on interface eth0 to a neighbor's link-local
+address until a neighbor advertisement is received.
+
+```none
+$ sudo ndp -i eth0 -a linklocal -t fe80::1 ns
+```
+
 An example of the tool sending a router solicitation and receiving a router
 advertisement on the WAN interface of a Ubiquiti router:
 

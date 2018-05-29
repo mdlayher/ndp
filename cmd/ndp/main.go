@@ -87,4 +87,9 @@ Examples:
   address until a router advertisement is received.
 
     $ sudo ndp -i eth0 -a linklocal rs
+
+  Send neighbor solicitations on interface eth0 to a neighbor's link-local
+  address until a neighbor advertisement is received.
+
+    $ sudo ndp -i eth0 -a linklocal -t fe80::1 ns
 `
