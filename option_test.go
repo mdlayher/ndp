@@ -162,6 +162,49 @@ func TestOptionUnmarshalError(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "rdnss",
+			o:    &RecursiveDNSServer{},
+			subs: []sub{
+				{
+					name: "no servers",
+					bs: [][]byte{
+						{25, 1},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// No servers.
+					},
+				},
+				{
+					name: "bad first server",
+					bs: [][]byte{
+						{25, 2},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// First server, half an IPv6 address.
+						ndptest.Zero(8),
+					},
+				},
+				{
+					name: "bad second server",
+					bs: [][]byte{
+						{25, 4},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// First server.
+						ndptest.Zero(16),
+						// Second server, half an IPv6 address.
+						ndptest.Zero(8),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -267,6 +267,7 @@ const (
 
 var (
 	errRDNSSNoServers = errors.New("ndp: recursive DNS server option requires at least one server")
+	errRDNSSBadServer = errors.New("ndp: recursive DNS server option has malformed IPv6 address")
 )
 
 func (r *RecursiveDNSServer) marshal() ([]byte, error) {
@@ -318,8 +319,14 @@ func (r *RecursiveDNSServer) unmarshal(b []byte) error {
 	//
 	// "That is, the number of addresses is equal to (Length - 1) / 2."
 	//
-	// Make sure at least one server is present.
-	count := (int(raw.Length) - 1) / 2
+	// Make sure at least one server is present, and that the IPv6 addresses are
+	// the expected 16 byte length.
+	dividend := (int(raw.Length) - 1)
+	if dividend%2 != 0 {
+		return errRDNSSBadServer
+	}
+
+	count := dividend / 2
 	if count == 0 {
 		return errRDNSSNoServers
 	}
