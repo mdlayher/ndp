@@ -247,7 +247,7 @@ func TestConns(ifi *net.Interface) (*Conn, *Conn, net.IP, error) {
 func udpConn(addr *net.IPAddr, ifi *net.Interface) (*Conn, int, error) {
 	laddr := &net.UDPAddr{
 		IP: addr.IP,
-		// Port ommitted so it will be assigned automatically.
+		// Port omitted so it will be assigned automatically.
 		Zone: addr.Zone,
 	}
 
