@@ -249,6 +249,103 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 	return nil
 }
 
+// A RecursiveDNSServer is a Recursive DNS Server option, as described in
+// RFC 6106, Section 5.1.
+type RecursiveDNSServer struct {
+	Lifetime time.Duration
+	Servers  []net.IP
+}
+
+// Code implements Option.
+func (r *RecursiveDNSServer) Code() byte { return optRDNSS }
+
+// Offsets for the RDNSS option.
+const (
+	rdnssLifetimeOff = 2
+	rdnssServersOff  = 6
+)
+
+var (
+	errRDNSSNoServers = errors.New("ndp: recursive DNS server option requires at least one server")
+)
+
+func (r *RecursiveDNSServer) marshal() ([]byte, error) {
+	slen := len(r.Servers)
+	if slen == 0 {
+		return nil, errRDNSSNoServers
+	}
+
+	raw := &RawOption{
+		Type: r.Code(),
+		// Always have one length unit to start, and then each IPv6 address
+		// occupies two length units.
+		Length: 1 + uint8((slen * 2)),
+		// Allocate enough space for all data.
+		Value: make([]byte, rdnssServersOff+(slen*net.IPv6len)),
+	}
+
+	binary.BigEndian.PutUint32(
+		raw.Value[rdnssLifetimeOff:rdnssServersOff],
+		uint32(r.Lifetime.Seconds()),
+	)
+
+	for i := 0; i < len(r.Servers); i++ {
+		// Determine the start and end byte offsets for each address,
+		// effectively iterating 16 bytes at a time to insert an address.
+		var (
+			start = rdnssServersOff + (i * net.IPv6len)
+			end   = rdnssServersOff + net.IPv6len + (i * net.IPv6len)
+		)
+
+		copy(raw.Value[start:end], r.Servers[i])
+	}
+
+	return raw.marshal()
+}
+
+func (r *RecursiveDNSServer) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	// Skip 2 reserved bytes to get lifetime.
+	lt := time.Duration(binary.BigEndian.Uint32(
+		raw.Value[rdnssLifetimeOff:rdnssServersOff])) * time.Second
+
+	// Determine the number of DNS servers specified using the method described
+	// in the RFC.  Remember, length is specified in units of 8 octets.
+	//
+	// "That is, the number of addresses is equal to (Length - 1) / 2."
+	//
+	// Make sure at least one server is present.
+	count := (int(raw.Length) - 1) / 2
+	if count == 0 {
+		return errRDNSSNoServers
+	}
+
+	servers := make([]net.IP, 0, count)
+	for i := 0; i < count; i++ {
+		// Determine the start and end byte offsets for each address,
+		// effectively iterating 16 bytes at a time to fetch an address.
+		var (
+			start = rdnssServersOff + (i * net.IPv6len)
+			end   = rdnssServersOff + net.IPv6len + (i * net.IPv6len)
+		)
+
+		// The RawOption already made a copy of this data, so convert it
+		// directly to an IPv6 address with no further copying needed.
+		servers = append(servers, net.IP(raw.Value[start:end]))
+	}
+
+	*r = RecursiveDNSServer{
+		Lifetime: lt,
+		Servers:  servers,
+	}
+
+	return nil
+}
+
 var _ Option = &RawOption{}
 
 // A RawOption is an Option in its raw and unprocessed format.  Options which
@@ -361,101 +458,4 @@ func parseOptions(b []byte) ([]Option, error) {
 	}
 
 	return options, nil
-}
-
-// A RecursiveDNSServer is a Recursive DNS Server option, as described in
-// RFC 6106, Section 5.1.
-type RecursiveDNSServer struct {
-	Lifetime time.Duration
-	Servers  []net.IP
-}
-
-// Code implements Option.
-func (r *RecursiveDNSServer) Code() byte { return optRDNSS }
-
-// Offsets for the RDNSS option.
-const (
-	rdnssLifetimeOff = 2
-	rdnssServersOff  = 6
-)
-
-var (
-	errRDNSSNoServers = errors.New("ndp: recursive DNS server option requires at least one server")
-)
-
-func (r *RecursiveDNSServer) marshal() ([]byte, error) {
-	slen := len(r.Servers)
-	if slen == 0 {
-		return nil, errRDNSSNoServers
-	}
-
-	raw := &RawOption{
-		Type: r.Code(),
-		// Always have one length unit to start, and then each IPv6 address
-		// occupies two length units.
-		Length: 1 + uint8((slen * 2)),
-		// Allocate enough space for all data.
-		Value: make([]byte, rdnssServersOff+(slen*net.IPv6len)),
-	}
-
-	binary.BigEndian.PutUint32(
-		raw.Value[rdnssLifetimeOff:rdnssServersOff],
-		uint32(r.Lifetime.Seconds()),
-	)
-
-	for i := 0; i < len(r.Servers); i++ {
-		// Determine the start and end byte offsets for each address,
-		// effectively iterating 16 bytes at a time to insert an address.
-		var (
-			start = rdnssServersOff + (i * net.IPv6len)
-			end   = rdnssServersOff + net.IPv6len + (i * net.IPv6len)
-		)
-
-		copy(raw.Value[start:end], r.Servers[i])
-	}
-
-	return raw.marshal()
-}
-
-func (r *RecursiveDNSServer) unmarshal(b []byte) error {
-	raw := new(RawOption)
-	if err := raw.unmarshal(b); err != nil {
-		return err
-	}
-
-	// Skip 2 reserved bytes to get lifetime.
-	lt := time.Duration(binary.BigEndian.Uint32(
-		raw.Value[rdnssLifetimeOff:rdnssServersOff])) * time.Second
-
-	// Determine the number of DNS servers specified using the method described
-	// in the RFC.  Remember, length is specified in units of 8 octets.
-	//
-	// "That is, the number of addresses is equal to (Length - 1) / 2."
-	//
-	// Make sure at least one server is present.
-	count := (int(raw.Length) - 1) / 2
-	if count == 0 {
-		return errRDNSSNoServers
-	}
-
-	servers := make([]net.IP, 0, count)
-	for i := 0; i < count; i++ {
-		// Determine the start and end byte offsets for each address,
-		// effectively iterating 16 bytes at a time to fetch an address.
-		var (
-			start = rdnssServersOff + (i * net.IPv6len)
-			end   = rdnssServersOff + net.IPv6len + (i * net.IPv6len)
-		)
-
-		// The RawOption already made a copy of this data, so convert it
-		// directly to an IPv6 address with no further copying needed.
-		servers = append(servers, net.IP(raw.Value[start:end]))
-	}
-
-	*r = RecursiveDNSServer{
-		Lifetime: lt,
-		Servers:  servers,
-	}
-
-	return nil
 }
