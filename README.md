@@ -11,6 +11,9 @@ Install the package and utility using `go get`:
 $ go get github.com/mdlayher/ndp/...
 ```
 
+To learn more about NDP, and how to use this package, check out my blog:
+[Network Protocol Breakdown:  NDP and Go](https://medium.com/@mdlayher/network-protocol-breakdown-ndp-and-go-3dc2900b1c20).
+
 ## Examples
 
 Listen for incoming NDP messages on interface eth0 to one of the interface's
