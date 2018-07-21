@@ -31,6 +31,12 @@ func listen(ctx context.Context, c *ndp.Conn) error {
 	ll := log.New(os.Stderr, "ndp listen> ", 0)
 	ll.Println("listening for messages")
 
+	// Also listen for router solicitations from other hosts, even though we
+	// will never reply to them.
+	if err := c.JoinGroup(net.IPv6linklocalallrouters); err != nil {
+		return err
+	}
+
 	var recv int
 	for {
 		if err := c.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {

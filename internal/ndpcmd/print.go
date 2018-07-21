@@ -17,6 +17,8 @@ func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
 		printNS(ll, m, from)
 	case *ndp.RouterAdvertisement:
 		printRA(ll, m, from)
+	case *ndp.RouterSolicitation:
+		printRS(ll, m, from)
 	default:
 		ll.Printf("%s %#v", from, m)
 	}
@@ -62,6 +64,23 @@ const raFormat = `router advertisement from: %s:
     - router lifetime:  %s
     - reachable time:   %s
     - retransmit timer: %s
+    - options:
+%s`
+
+func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from net.IP) {
+	var opts string
+	for _, o := range rs.Options {
+		opts += fmt.Sprintf("        - %s\n", optStr(o))
+	}
+
+	ll.Printf(
+		rsFormat,
+		from.String(),
+		opts,
+	)
+}
+
+const rsFormat = `router solicitation from %s:
     - options:
 %s`
 
