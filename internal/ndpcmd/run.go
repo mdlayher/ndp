@@ -60,14 +60,3 @@ func listen(ctx context.Context, c *ndp.Conn) error {
 		return fmt.Errorf("failed to read message: %v", err)
 	}
 }
-
-func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
-	switch m := m.(type) {
-	case *ndp.NeighborAdvertisement:
-		printNA(ll, m, from)
-	case *ndp.RouterAdvertisement:
-		printRA(ll, m, from)
-	default:
-		ll.Printf("%s %#v", from, m)
-	}
-}
