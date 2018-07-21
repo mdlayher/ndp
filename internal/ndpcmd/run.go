@@ -15,7 +15,8 @@ import (
 // Run runs the ndp utility.
 func Run(ctx context.Context, c *ndp.Conn, ifi *net.Interface, op string, target net.IP) error {
 	switch op {
-	case "listen":
+	// listen is the default when no op is specified..
+	case "listen", "":
 		return listen(ctx, c)
 	case "ns":
 		return sendNS(ctx, c, ifi.HardwareAddr, target)
