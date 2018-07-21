@@ -13,6 +13,8 @@ func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
 	switch m := m.(type) {
 	case *ndp.NeighborAdvertisement:
 		printNA(ll, m, from)
+	case *ndp.NeighborSolicitation:
+		printNS(ll, m, from)
 	case *ndp.RouterAdvertisement:
 		printRA(ll, m, from)
 	default:
@@ -84,6 +86,25 @@ const naFormat = `neighbor advertisement from %s:
     - router:         %t
     - solicited:      %t
     - override:       %t
+    - target address: %s
+    - options:
+%s`
+
+func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
+	var opts string
+	for _, o := range ns.Options {
+		opts += fmt.Sprintf("        - %s\n", optStr(o))
+	}
+
+	ll.Printf(
+		nsFormat,
+		from.String(),
+		ns.TargetAddress.String(),
+		opts,
+	)
+}
+
+const nsFormat = `neighbor solicitation from %s:
     - target address: %s
     - options:
 %s`
