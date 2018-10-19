@@ -30,6 +30,9 @@ func main() {
 
 	flag.Parse()
 	ll := log.New(os.Stderr, "ndp> ", 0)
+	if flag.NArg() > 1 {
+		ll.Fatalf("too many args on command line: %v", flag.Args()[1:])
+	}
 
 	ifi, err := findInterface(*ifiFlag)
 	if err != nil {
