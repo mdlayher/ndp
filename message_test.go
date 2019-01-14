@@ -182,6 +182,40 @@ func TestParseMessageError(t *testing.T) {
 	}
 }
 
+func TestMarshalMessageChecksum(t *testing.T) {
+	source := net.ParseIP("2001:db8::10")
+	destination := net.ParseIP("2001:db8::1")
+	mac, err := net.ParseMAC("86:31:82:05:ce:9a")
+	if err != nil {
+		t.Fatalf("Failed to parse hard-coded mac address in test: %v", err)
+	}
+	message := &ndp.NeighborAdvertisement{
+		Solicited:     true,
+		Override:      true,
+		TargetAddress: source,
+		Options: []ndp.Option{&ndp.LinkLayerAddress{
+			Direction: ndp.Target,
+			Addr:      mac,
+		}},
+	}
+	buf, err := ndp.MarshalMessageChecksum(message, source, destination)
+	if err != nil {
+		t.Fatalf("Failed to marshal message: %v", err)
+	}
+	// NOTE: Checksum is in the 3rd and 4th bytes in the message
+	if diff := cmp.Diff(buf[2:4], []uint8{0xb5, 0x85}); diff != "" {
+		t.Fatalf("unexpected checksum (-want +got):\n%s", diff)
+	}
+	// Check that MarshalMessage has a 0 checksum
+	buf, err = ndp.MarshalMessage(message)
+	if err != nil {
+		t.Fatalf("Failed to marshal message: %v", err)
+	}
+	if diff := cmp.Diff(buf[2:4], []uint8{0, 0}); diff != "" {
+		t.Fatalf("unexpected checksum (-want +got):\n%s", diff)
+	}
+}
+
 func naTests() []messageSub {
 	return []messageSub{
 		{
