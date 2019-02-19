@@ -123,7 +123,7 @@ func NewMTU(mtu uint32) *MTU {
 }
 
 // Code implements Option.
-func (m *MTU) Code() byte { return optMTU }
+func (*MTU) Code() byte { return optMTU }
 
 func (m *MTU) marshal() ([]byte, error) {
 	raw := &RawOption{
@@ -162,7 +162,7 @@ type PrefixInformation struct {
 }
 
 // Code implements Option.
-func (pi *PrefixInformation) Code() byte { return optPrefixInformation }
+func (*PrefixInformation) Code() byte { return optPrefixInformation }
 
 func (pi *PrefixInformation) marshal() ([]byte, error) {
 	// Per the RFC:
@@ -237,8 +237,8 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 	addr = addr.Mask(mask)
 
 	*pi = PrefixInformation{
-		PrefixLength: l,
-		OnLink:       oFlag,
+		PrefixLength:                   l,
+		OnLink:                         oFlag,
 		AutonomousAddressConfiguration: aFlag,
 		ValidLifetime:                  valid,
 		PreferredLifetime:              preferred,
@@ -250,14 +250,14 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 }
 
 // A RecursiveDNSServer is a Recursive DNS Server option, as described in
-// RFC 6106, Section 5.1.
+// RFC 8106, Section 5.1.
 type RecursiveDNSServer struct {
 	Lifetime time.Duration
 	Servers  []net.IP
 }
 
 // Code implements Option.
-func (r *RecursiveDNSServer) Code() byte { return optRDNSS }
+func (*RecursiveDNSServer) Code() byte { return optRDNSS }
 
 // Offsets for the RDNSS option.
 const (
@@ -364,42 +364,42 @@ type RawOption struct {
 }
 
 // Code implements Option.
-func (u *RawOption) Code() byte { return u.Type }
+func (r *RawOption) Code() byte { return r.Type }
 
-func (u *RawOption) marshal() ([]byte, error) {
+func (r *RawOption) marshal() ([]byte, error) {
 	// Length specified in units of 8 bytes, and the caller must provide
 	// an accurate length.
-	l := int(u.Length * 8)
-	if 1+1+len(u.Value) != l {
+	l := int(r.Length * 8)
+	if 1+1+len(r.Value) != l {
 		return nil, io.ErrUnexpectedEOF
 	}
 
-	b := make([]byte, u.Length*8)
-	b[0] = u.Type
-	b[1] = u.Length
+	b := make([]byte, r.Length*8)
+	b[0] = r.Type
+	b[1] = r.Length
 
-	copy(b[2:], u.Value)
+	copy(b[2:], r.Value)
 
 	return b, nil
 }
 
-func (u *RawOption) unmarshal(b []byte) error {
+func (r *RawOption) unmarshal(b []byte) error {
 	if len(b) < 2 {
 		return io.ErrUnexpectedEOF
 	}
 
-	u.Type = b[0]
-	u.Length = b[1]
+	r.Type = b[0]
+	r.Length = b[1]
 	// Exclude type and length fields from value's length.
-	l := int(u.Length*8) - 2
+	l := int(r.Length*8) - 2
 
 	// Enforce a valid length value that matches the expected one.
 	if lb := len(b[2:]); l != lb {
 		return fmt.Errorf("ndp: option value byte length should be %d, but length is %d", l, lb)
 	}
 
-	u.Value = make([]byte, l)
-	copy(u.Value, b[2:])
+	r.Value = make([]byte, l)
+	copy(r.Value, b[2:])
 
 	return nil
 }
