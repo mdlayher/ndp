@@ -35,16 +35,6 @@ func testUDPConn(t *testing.T) (*Conn, *Conn, net.IP, func()) {
 	}
 }
 
-func testInterface(t *testing.T) *net.Interface {
-	// TODO(mdlayher): expand this to be more flexible.
-	ifi, err := net.InterfaceByName("eth0")
-	if err != nil {
-		t.Fatalf("failed to get eth0: %v", err)
-	}
-
-	return ifi
-}
-
 func icmpConn(t *testing.T, ifi *net.Interface) (*Conn, net.IP) {
 	// Wire up a standard ICMPv6 NDP connection.
 	c, addr, err := Dial(ifi, LinkLocal)
@@ -59,6 +49,43 @@ func icmpConn(t *testing.T, ifi *net.Interface) (*Conn, net.IP) {
 	c.icmpTest = true
 
 	return c, addr
+}
+
+func testInterface(t *testing.T) *net.Interface {
+	t.Helper()
+
+	ifis, err := net.Interfaces()
+	if err != nil {
+		t.Fatalf("failed to get interfaces: %v", err)
+	}
+
+	for _, ifi := range ifis {
+		// Is the interface up and not a loopback?
+		if ifi.Flags&net.FlagUp != 1 || ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		// Does the interface have an IPv6 address assigned?
+		addrs, err := ifi.Addrs()
+		if err != nil {
+			t.Fatalf("failed to get interface %q addresses: %v", ifi.Name, err)
+		}
+
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+
+			// Is this address an IPv6 address?
+			if ipNet.IP.To16() != nil && ipNet.IP.To4() == nil {
+				return &ifi
+			}
+		}
+	}
+
+	t.Skip("could not find a usable IPv6-enabled interface")
+	return nil
 }
 
 func panicf(format string, a ...interface{}) {
