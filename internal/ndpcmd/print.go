@@ -25,11 +25,6 @@ func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
 }
 
 func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
-	var opts string
-	for _, o := range ra.Options {
-		opts += fmt.Sprintf("        - %s\n", optStr(o))
-	}
-
 	var flags string
 	if ra.ManagedConfiguration {
 		flags += "M"
@@ -44,7 +39,7 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 		flags += "P"
 	}
 
-	ll.Printf(
+	s := fmt.Sprintf(
 		raFormat,
 		from.String(),
 		ra.CurrentHopLimit,
@@ -53,8 +48,9 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 		ra.RouterLifetime,
 		ra.ReachableTime,
 		ra.RetransmitTimer,
-		opts,
 	)
+
+	ll.Print(s + optionsString(ra.Options))
 }
 
 const raFormat = `router advertisement from: %s:
@@ -63,70 +59,65 @@ const raFormat = `router advertisement from: %s:
     - preference:       %d
     - router lifetime:  %s
     - reachable time:   %s
-    - retransmit timer: %s
-    - options:
-%s`
+    - retransmit timer: %s`
 
 func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from net.IP) {
-	var opts string
-	for _, o := range rs.Options {
-		opts += fmt.Sprintf("        - %s\n", optStr(o))
-	}
-
-	ll.Printf(
+	s := fmt.Sprintf(
 		rsFormat,
 		from.String(),
-		opts,
 	)
+
+	ll.Print(s + optionsString(rs.Options))
 }
 
-const rsFormat = `router solicitation from %s:
-    - options:
-%s`
+const rsFormat = `router solicitation from %s:`
 
 func printNA(ll *log.Logger, na *ndp.NeighborAdvertisement, from net.IP) {
-	var opts string
-	for _, o := range na.Options {
-		opts += fmt.Sprintf("        - %s\n", optStr(o))
-	}
-
-	ll.Printf(
+	s := fmt.Sprintf(
 		naFormat,
 		from.String(),
 		na.Router,
 		na.Solicited,
 		na.Override,
 		na.TargetAddress.String(),
-		opts,
 	)
+
+	ll.Print(s + optionsString(na.Options))
 }
 
 const naFormat = `neighbor advertisement from %s:
     - router:         %t
     - solicited:      %t
     - override:       %t
-    - target address: %s
-    - options:
-%s`
+    - target address: %s`
 
 func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
-	var opts string
-	for _, o := range ns.Options {
-		opts += fmt.Sprintf("        - %s\n", optStr(o))
-	}
-
-	ll.Printf(
+	s := fmt.Sprintf(
 		nsFormat,
 		from.String(),
 		ns.TargetAddress.String(),
-		opts,
 	)
+
+	ll.Print(s + optionsString(ns.Options))
 }
 
 const nsFormat = `neighbor solicitation from %s:
-    - target address: %s
-    - options:
-%s`
+    - target address: %s`
+
+func optionsString(options []ndp.Option) string {
+	if len(options) == 0 {
+		return ""
+	}
+
+	var s strings.Builder
+	s.WriteString("\n    - options:\n")
+
+	for _, o := range options {
+		s.WriteString(fmt.Sprintf("        - %s\n", optStr(o)))
+	}
+
+	return s.String()
+}
 
 func optStr(o ndp.Option) string {
 	switch o := o.(type) {
