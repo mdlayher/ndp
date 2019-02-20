@@ -3,6 +3,7 @@ package ndpcmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,15 +12,27 @@ import (
 	"github.com/mdlayher/ndp"
 )
 
+var (
+	errTargetOp = errors.New("flag '-t' is only valid for neighbor solicitation operation")
+)
+
 // Run runs the ndp utility.
 func Run(ctx context.Context, c *ndp.Conn, ifi *net.Interface, op string, target net.IP) error {
 	switch op {
-	// listen is the default when no op is specified..
+	// listen is the default when no op is specified.
 	case "listen", "":
+		if target != nil {
+			return errTargetOp
+		}
+
 		return listen(ctx, c)
 	case "ns":
 		return sendNS(ctx, c, ifi.HardwareAddr, target)
 	case "rs":
+		if target != nil {
+			return errTargetOp
+		}
+
 		return sendRS(ctx, c, ifi.HardwareAddr)
 	default:
 		return fmt.Errorf("unrecognized operation: %q", op)
