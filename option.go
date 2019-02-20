@@ -9,6 +9,9 @@ import (
 	"net"
 	"strings"
 	"time"
+	"unicode"
+
+	"gitlab.com/golang-commonmark/puny"
 )
 
 // Infinity indicates that a prefix is valid for an infinite amount of time,
@@ -394,7 +397,13 @@ func (d *DNSSearchList) marshal() ([]byte, error) {
 	// and a null terminator between full domain names, using the algorithm from:
 	// https://tools.ietf.org/html/rfc1035#section-3.1.
 	for _, dn := range d.DomainNames {
-		for _, label := range strings.Split(dn, ".") {
+		// All unicode names must be converted to punycode.
+		for _, label := range strings.Split(puny.ToASCII(dn), ".") {
+			// Label must be convertable to valid Punycode.
+			if !isASCII(label) {
+				return nil, errDNSSLBadDomains
+			}
+
 			value = append(value, byte(len(label)))
 			value = append(value, label...)
 		}
@@ -430,8 +439,6 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 	lt := time.Duration(binary.BigEndian.Uint32(
 		raw.Value[dnsslLifetimeOff:dnsslDomainsOff])) * time.Second
 
-	// TODO(mdlayher): deal with unicode domains.
-
 	// This block implements the domain name space parsing algorithm from:
 	// https://tools.ietf.org/html/rfc1035#section-3.1.
 	//
@@ -456,11 +463,23 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 		}
 		i++
 
-		// Parse the label string.
+		// Parse the label string and ensure it is ASCII, and that it doesn't
+		// contain invalid characters.
 		label := string(raw.Value[i : i+length])
+		if !isASCII(label) {
+			return errDNSSLBadDomains
+		}
 
-		// TODO(mdlayher): much smarter validation, unicode handling.
-		if strings.Contains(label, ".") {
+		// TODO(mdlayher): much smarter validation.
+		if label == "" || strings.Contains(label, ".") || strings.Contains(label, " ") {
+			return errDNSSLBadDomains
+		}
+
+		// Verify that the Punycode label decodes to something sane.
+		label = puny.ToUnicode(label)
+
+		// TODO(mdlayher): much smarter validation.
+		if label == "" || hasUnicodeReplacement(label) || strings.Contains(label, ".") || strings.Contains(label, " ") {
 			return errDNSSLBadDomains
 		}
 
@@ -471,7 +490,8 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 		// empty the label stack for reuse.
 		if raw.Value[i] == 0 {
 			i++
-			domains = append(domains, strings.Join(labels, "."))
+
+			domains = append(domains, puny.ToUnicode(strings.Join(labels, ".")))
 			labels = []string{}
 
 			// Have we reached the end of the value slice?
@@ -609,4 +629,25 @@ func parseOptions(b []byte) ([]Option, error) {
 	}
 
 	return options, nil
+}
+
+// isASCII verifies that the contents of s are all ASCII characters.
+func isASCII(s string) bool {
+	for _, c := range s {
+		if c > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
+// hasUnicodeReplacement checks for the Unicode replacment character in s.
+func hasUnicodeReplacement(s string) bool {
+	for _, c := range s {
+		if c == unicode.ReplacementChar {
+			return true
+		}
+	}
+
+	return false
 }
