@@ -569,5 +569,29 @@ func dnsslTests() []optionSub {
 			},
 			ok: true,
 		},
+		{
+			name: "ok, punycode domain",
+			os: []Option{
+				&DNSSearchList{
+					Lifetime:    1 * time.Hour,
+					DomainNames: []string{"😃.example.com"},
+				},
+			},
+			bs: [][]byte{
+				{31, 4},
+				// Reserved.
+				{0x00, 0x00},
+				// Lifetime.
+				{0x00, 0x00, 0x0e, 0x10},
+				// Labels.
+				{8}, []byte("xn--h28h"),
+				{7}, []byte("example"),
+				{3}, []byte("com"),
+				{0x00},
+				// Padding.
+				ndptest.Zero(2),
+			},
+			ok: true,
+		},
 	}
 }

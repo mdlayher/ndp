@@ -65,6 +65,31 @@ func Test_fuzz(t *testing.T) {
 				"00000000000000000000" +
 				"0000",
 		},
+		{
+			name: "dnssl punycode empty string",
+			s: "\x850000000\x1f\x02000000\x04xn-" +
+				"-\x00\x000",
+		},
+		{
+			name: "dnssl with spaces",
+			s: "\x850000000\x1f\x03000000\x05．" +
+				"00\x010\x0500000\x00\x00",
+		},
+		{
+			name: "dnssl not ASCII",
+			s: "\x850000000\x1f\x02000000\x06．" +
+				"000\x00",
+		},
+		{
+			name: "dnssl decodes to empty string",
+			s: "\x850000000\x1f\x02000000\x04xn-" +
+				"-\x010\x00",
+		},
+		{
+			name: "dnssl unicode replacement character",
+			s: "\x850000000\x1f\x04000000\x010\x020" +
+				"0\x0exn---00000H00F\x01@\x00\x00",
+		},
 	}
 
 	for _, tt := range tests {
