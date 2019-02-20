@@ -1,11 +1,13 @@
 package ndp
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -28,6 +30,7 @@ const (
 	optPrefixInformation = 3
 	optMTU               = 5
 	optRDNSS             = 25
+	optDNSSL             = 31
 )
 
 // A Direction specifies the direction of a LinkLayerAddress Option as a source
@@ -123,7 +126,7 @@ func NewMTU(mtu uint32) *MTU {
 }
 
 // Code implements Option.
-func (m *MTU) Code() byte { return optMTU }
+func (*MTU) Code() byte { return optMTU }
 
 func (m *MTU) marshal() ([]byte, error) {
 	raw := &RawOption{
@@ -162,7 +165,7 @@ type PrefixInformation struct {
 }
 
 // Code implements Option.
-func (pi *PrefixInformation) Code() byte { return optPrefixInformation }
+func (*PrefixInformation) Code() byte { return optPrefixInformation }
 
 func (pi *PrefixInformation) marshal() ([]byte, error) {
 	// Per the RFC:
@@ -237,8 +240,8 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 	addr = addr.Mask(mask)
 
 	*pi = PrefixInformation{
-		PrefixLength: l,
-		OnLink:       oFlag,
+		PrefixLength:                   l,
+		OnLink:                         oFlag,
 		AutonomousAddressConfiguration: aFlag,
 		ValidLifetime:                  valid,
 		PreferredLifetime:              preferred,
@@ -250,14 +253,14 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 }
 
 // A RecursiveDNSServer is a Recursive DNS Server option, as described in
-// RFC 6106, Section 5.1.
+// RFC 8106, Section 5.1.
 type RecursiveDNSServer struct {
 	Lifetime time.Duration
 	Servers  []net.IP
 }
 
 // Code implements Option.
-func (r *RecursiveDNSServer) Code() byte { return optRDNSS }
+func (*RecursiveDNSServer) Code() byte { return optRDNSS }
 
 // Offsets for the RDNSS option.
 const (
@@ -353,6 +356,145 @@ func (r *RecursiveDNSServer) unmarshal(b []byte) error {
 	return nil
 }
 
+// A DNSSearchList is a DNS search list option, as described in
+// RFC 8106, Section 5.2.
+type DNSSearchList struct {
+	Lifetime    time.Duration
+	DomainNames []string
+}
+
+// Code implements Option.
+func (*DNSSearchList) Code() byte { return optDNSSL }
+
+// Offsets for the RDNSS option.
+const (
+	dnsslLifetimeOff = 2
+	dnsslDomainsOff  = 6
+)
+
+var (
+	errDNSSLBadDomains = errors.New("ndp: DNS search list option has malformed domain names")
+	errDNSSLNoDomains  = errors.New("ndp: DNS search list option requires at least one domain name")
+)
+
+func (d *DNSSearchList) marshal() ([]byte, error) {
+	if len(d.DomainNames) == 0 {
+		return nil, errDNSSLNoDomains
+	}
+
+	// Make enough room for reserved bytes and lifetime.
+	value := make([]byte, dnsslDomainsOff)
+
+	binary.BigEndian.PutUint32(
+		value[dnsslLifetimeOff:dnsslDomainsOff],
+		uint32(d.Lifetime.Seconds()),
+	)
+
+	// Attach each label component of a domain name with a one byte length prefix
+	// and a null terminator between full domain names, using the algorithm from:
+	// https://tools.ietf.org/html/rfc1035#section-3.1.
+	for _, dn := range d.DomainNames {
+		for _, label := range strings.Split(dn, ".") {
+			value = append(value, byte(len(label)))
+			value = append(value, label...)
+		}
+
+		value = append(value, 0)
+	}
+
+	// Pad null bytes into value, so that when combined with type and length,
+	// the entire buffer length is divisible by 8 bytes for proper NDP option
+	// length.
+	if r := (len(value) + 2) % 8; r != 0 {
+		value = append(value, bytes.Repeat([]byte{0x00}, 8-r)...)
+	}
+
+	raw := &RawOption{
+		Type: d.Code(),
+		// Always have one length unit to start, and then calculate the length
+		// needed for value.
+		Length: uint8((len(value) + 2) / 8),
+		Value:  value,
+	}
+
+	return raw.marshal()
+}
+
+func (d *DNSSearchList) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	// Skip 2 reserved bytes to get lifetime.
+	lt := time.Duration(binary.BigEndian.Uint32(
+		raw.Value[dnsslLifetimeOff:dnsslDomainsOff])) * time.Second
+
+	// TODO(mdlayher): deal with unicode domains.
+
+	// This block implements the domain name space parsing algorithm from:
+	// https://tools.ietf.org/html/rfc1035#section-3.1.
+	//
+	// A domain is comprised of a sequence of labels, which are accumulated and
+	// then separated by periods later on.
+	var domains []string
+	var labels []string
+	for i := dnsslDomainsOff; ; {
+		if len(raw.Value[i:]) < 2 {
+			return errDNSSLBadDomains
+		}
+
+		// Parse the length of the upcoming label.
+		length := int(raw.Value[i])
+		if length >= len(raw.Value[i:])-1 {
+			// Length out of range.
+			return errDNSSLBadDomains
+		}
+		if length == 0 {
+			// No more labels.
+			break
+		}
+		i++
+
+		// Parse the label string.
+		label := string(raw.Value[i : i+length])
+
+		// TODO(mdlayher): much smarter validation, unicode handling.
+		if strings.Contains(label, ".") {
+			return errDNSSLBadDomains
+		}
+
+		labels = append(labels, label)
+		i += length
+
+		// If we've reached a null byte, join labels into a domain name and
+		// empty the label stack for reuse.
+		if raw.Value[i] == 0 {
+			i++
+			domains = append(domains, strings.Join(labels, "."))
+			labels = []string{}
+
+			// Have we reached the end of the value slice?
+			if len(raw.Value[i:]) == 0 || (len(raw.Value[i:]) == 1 && raw.Value[i] == 0) {
+				// No more non-padding bytes, no more labels.
+				break
+			}
+		}
+	}
+
+	// Must have found at least one domain.
+	if len(domains) == 0 {
+		return errDNSSLNoDomains
+	}
+
+	*d = DNSSearchList{
+		Lifetime:    lt,
+		DomainNames: domains,
+	}
+
+	return nil
+}
+
 var _ Option = &RawOption{}
 
 // A RawOption is an Option in its raw and unprocessed format.  Options which
@@ -364,42 +506,42 @@ type RawOption struct {
 }
 
 // Code implements Option.
-func (u *RawOption) Code() byte { return u.Type }
+func (r *RawOption) Code() byte { return r.Type }
 
-func (u *RawOption) marshal() ([]byte, error) {
+func (r *RawOption) marshal() ([]byte, error) {
 	// Length specified in units of 8 bytes, and the caller must provide
 	// an accurate length.
-	l := int(u.Length * 8)
-	if 1+1+len(u.Value) != l {
+	l := int(r.Length * 8)
+	if 1+1+len(r.Value) != l {
 		return nil, io.ErrUnexpectedEOF
 	}
 
-	b := make([]byte, u.Length*8)
-	b[0] = u.Type
-	b[1] = u.Length
+	b := make([]byte, r.Length*8)
+	b[0] = r.Type
+	b[1] = r.Length
 
-	copy(b[2:], u.Value)
+	copy(b[2:], r.Value)
 
 	return b, nil
 }
 
-func (u *RawOption) unmarshal(b []byte) error {
+func (r *RawOption) unmarshal(b []byte) error {
 	if len(b) < 2 {
 		return io.ErrUnexpectedEOF
 	}
 
-	u.Type = b[0]
-	u.Length = b[1]
+	r.Type = b[0]
+	r.Length = b[1]
 	// Exclude type and length fields from value's length.
-	l := int(u.Length*8) - 2
+	l := int(r.Length*8) - 2
 
 	// Enforce a valid length value that matches the expected one.
 	if lb := len(b[2:]); l != lb {
 		return fmt.Errorf("ndp: option value byte length should be %d, but length is %d", l, lb)
 	}
 
-	u.Value = make([]byte, l)
-	copy(u.Value, b[2:])
+	r.Value = make([]byte, l)
+	copy(r.Value, b[2:])
 
 	return nil
 }
@@ -449,6 +591,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(PrefixInformation)
 		case optRDNSS:
 			o = new(RecursiveDNSServer)
+		case optDNSSL:
+			o = new(DNSSearchList)
 		default:
 			o = new(RawOption)
 		}

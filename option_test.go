@@ -55,6 +55,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			name: "recursive DNS servers",
 			subs: rdnssTests(),
 		},
+		{
+			name: "DNS search lists",
+			subs: dnsslTests(),
+		},
 	}
 
 	for _, tt := range tests {
@@ -205,6 +209,59 @@ func TestOptionUnmarshalError(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "dnssl",
+			o:    &DNSSearchList{},
+			subs: []sub{
+				{
+					name: "no domains",
+					bs: [][]byte{
+						{31, 1},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// No domains.
+					},
+				},
+				{
+					name: "misleading length",
+					bs: [][]byte{
+						{31, 2},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// Length misleading.
+						{0xff}, ndptest.Zero(7),
+					},
+				},
+				{
+					name: "no room for null terminator",
+					bs: [][]byte{
+						{31, 2},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// Length leaves no room for null terminator.
+						{7}, ndptest.Zero(7),
+					},
+				},
+				{
+					name: "no domains",
+					bs: [][]byte{
+						{31, 2},
+						// Reserved.
+						{0x00, 0x00},
+						// Lifetime.
+						ndptest.Zero(4),
+						// No domains.
+						ndptest.Zero(8),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -330,8 +387,8 @@ func piTests() []optionSub {
 			os: []Option{
 				&PrefixInformation{
 					// Prefix IP specified.
-					PrefixLength: 32,
-					OnLink:       true,
+					PrefixLength:                   32,
+					OnLink:                         true,
 					AutonomousAddressConfiguration: true,
 					ValidLifetime:                  Infinity,
 					PreferredLifetime:              20 * time.Minute,
@@ -437,6 +494,78 @@ func rdnssTests() []optionSub {
 				{0x00, 0x01, 0x51, 0x80},
 				first,
 				second,
+			},
+			ok: true,
+		},
+	}
+}
+
+func dnsslTests() []optionSub {
+	return []optionSub{
+		{
+			name: "bad, no domains",
+			os: []Option{
+				&DNSSearchList{
+					Lifetime: 1 * time.Second,
+				},
+			},
+		},
+		{
+			name: "ok, one domain",
+			os: []Option{
+				&DNSSearchList{
+					Lifetime:    1 * time.Hour,
+					DomainNames: []string{"example.com"},
+				},
+			},
+			bs: [][]byte{
+				{31, 3},
+				// Reserved.
+				{0x00, 0x00},
+				// Lifetime.
+				{0x00, 0x00, 0x0e, 0x10},
+				// Labels.
+				{7}, []byte("example"),
+				{3}, []byte("com"),
+				{0x00},
+				// Padding.
+				ndptest.Zero(3),
+			},
+			ok: true,
+		},
+		{
+			name: "ok, multiple servers",
+			os: []Option{
+				&DNSSearchList{
+					Lifetime: 1 * time.Hour,
+					DomainNames: []string{
+						"example.com",
+						"foo.example.com",
+						"bar.foo.example.com",
+					},
+				},
+			},
+			bs: [][]byte{
+				{31, 8},
+				// Reserved.
+				{0x00, 0x00},
+				// Lifetime.
+				{0x00, 0x00, 0x0e, 0x10},
+				// Labels.
+				{7}, []byte("example"),
+				{3}, []byte("com"),
+				{0x00},
+				{3}, []byte("foo"),
+				{7}, []byte("example"),
+				{3}, []byte("com"),
+				{0x00},
+				{3}, []byte("bar"),
+				{3}, []byte("foo"),
+				{7}, []byte("example"),
+				{3}, []byte("com"),
+				{0x00},
+				// Padding.
+				ndptest.Zero(5),
 			},
 			ok: true,
 		},
