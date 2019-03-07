@@ -2,6 +2,7 @@ package ndpcmd
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -39,27 +40,32 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 		flags += "P"
 	}
 
-	s := fmt.Sprintf(
-		raFormat,
-		from.String(),
-		ra.CurrentHopLimit,
-		flags,
-		ra.RouterSelectionPreference,
-		ra.RouterLifetime,
-		ra.ReachableTime,
-		ra.RetransmitTimer,
-	)
+	var s strings.Builder
+	writef(&s, "router advertisement from: %s:\n", from)
 
-	ll.Print(s + optionsString(ra.Options))
+	if ra.CurrentHopLimit > 0 {
+		writef(&s, "    - hop limit:        %d\n", ra.CurrentHopLimit)
+	}
+	if flags != "" {
+		writef(&s, "    - flags:            [%s]\n", flags)
+	}
+
+	writef(&s, "    - preference:       %s\n", ra.RouterSelectionPreference)
+
+	if ra.RouterLifetime > 0 {
+		writef(&s, "    - router lifetime:  %s\n", ra.RouterLifetime)
+	}
+	if ra.ReachableTime != 0 {
+		writef(&s, "    - reachable time:   %s\n", ra.ReachableTime)
+	}
+	if ra.RetransmitTimer != 0 {
+		writef(&s, "    - retransmit timer: %s\n", ra.RetransmitTimer)
+	}
+
+	_, _ = s.WriteString(optionsString(ra.Options))
+
+	ll.Print(s.String())
 }
-
-const raFormat = `router advertisement from: %s:
-    - hop limit:        %d
-    - flags:            [%s]
-    - preference:       %d
-    - router lifetime:  %s
-    - reachable time:   %s
-    - retransmit timer: %s`
 
 func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from net.IP) {
 	s := fmt.Sprintf(
@@ -89,7 +95,8 @@ const naFormat = `neighbor advertisement from %s:
     - router:         %t
     - solicited:      %t
     - override:       %t
-    - target address: %s`
+    - target address: %s
+`
 
 func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
 	s := fmt.Sprintf(
@@ -102,7 +109,8 @@ func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
 }
 
 const nsFormat = `neighbor solicitation from %s:
-    - target address: %s`
+    - target address: %s
+`
 
 func optionsString(options []ndp.Option) string {
 	if len(options) == 0 {
@@ -110,10 +118,10 @@ func optionsString(options []ndp.Option) string {
 	}
 
 	var s strings.Builder
-	s.WriteString("\n    - options:\n")
+	s.WriteString("    - options:\n")
 
 	for _, o := range options {
-		s.WriteString(fmt.Sprintf("        - %s\n", optStr(o)))
+		writef(&s, "        - %s\n", optStr(o))
 	}
 
 	return s.String()
@@ -161,4 +169,8 @@ func optStr(o ndp.Option) string {
 	default:
 		panic(fmt.Sprintf("unrecognized option: %v", o))
 	}
+}
+
+func writef(sw io.StringWriter, format string, a ...interface{}) {
+	_, _ = sw.WriteString(fmt.Sprintf(format, a...))
 }
