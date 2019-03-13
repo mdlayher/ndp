@@ -45,7 +45,7 @@ func marshalMessage(m Message, psh []byte) ([]byte, error) {
 		Code: 0,
 		// Calculated by caller or OS.
 		Checksum: 0,
-		Body: &icmp.DefaultMessageBody{
+		Body: &icmp.RawBody{
 			Data: mb,
 		},
 	}
