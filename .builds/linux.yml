@@ -1,0 +1,19 @@
+image: archlinux
+packages:
+  - go
+sources:
+  - https://github.com/mdlayher/ndp
+environment:
+  GO111MODULE: "on"
+tasks:
+  - build: |
+      ip -6 addr show
+      go version
+      go get golang.org/x/lint/golint
+      go get honnef.co/go/tools/cmd/staticcheck
+      cd ndp/
+      /home/build/go/bin/staticcheck ./...
+      /home/build/go/bin/golint -set_exit_status ./...
+      go test -v -race ./...
+      go test -c -race .
+      sudo ./ndp.test -test.v -test.run TestConn
