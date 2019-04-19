@@ -5,5 +5,5 @@ go 1.12
 require (
 	github.com/google/go-cmp v0.2.0
 	gitlab.com/golang-commonmark/puny v0.0.0-20180912090636-2cd490539afe
-	golang.org/x/net v0.0.0-20190313220215-9f648a60d977
+	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
 )
