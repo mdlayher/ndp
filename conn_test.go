@@ -5,9 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mdlayher/ndp/internal/ndptest"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/mdlayher/ndp/internal/ndptest"
 )
 
 func TestConn(t *testing.T) {
