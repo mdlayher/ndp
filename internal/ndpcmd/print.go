@@ -76,7 +76,7 @@ func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from net.IP) {
 	ll.Print(s + optionsString(rs.Options))
 }
 
-const rsFormat = `router solicitation from %s:`
+const rsFormat = "router solicitation from %s:\n"
 
 func printNA(ll *log.Logger, na *ndp.NeighborAdvertisement, from net.IP) {
 	s := fmt.Sprintf(
