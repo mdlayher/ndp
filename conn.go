@@ -109,6 +109,12 @@ func (c *Conn) LeaveGroup(group net.IP) error {
 	})
 }
 
+// SetICMPFilter applies the specified ICMP filter. This option can be used
+// to ensure a Conn only accepts certain kinds of NDP messages.
+func (c *Conn) SetICMPFilter(f *ipv6.ICMPFilter) error {
+	return c.pc.SetICMPFilter(f)
+}
+
 // ReadFrom reads a Message from the Conn and returns its control message and
 // source network address.  Messages sourced from this machine and malformed or
 // unrecognized ICMPv6 messages are filtered.
