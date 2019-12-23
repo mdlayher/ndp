@@ -32,20 +32,29 @@ func sendReceiveLoop(ctx context.Context, c *ndp.Conn, ll *log.Logger, m ndp.Mes
 	}
 }
 
-func receiveLoop(ctx context.Context, c *ndp.Conn, ll *log.Logger) error {
-	var recv int
+func receiveLoop(
+	ctx context.Context,
+	c *ndp.Conn,
+	ll *log.Logger,
+	check func(m ndp.Message) bool,
+	recv func(ll *log.Logger, msg ndp.Message, from net.IP),
+) error {
+	if recv == nil {
+		recv = printMessage
+	}
+
+	var count int
 	for {
-		// Don't do any checks; return every message to be printed.
-		msg, from, err := receive(ctx, c, nil)
+		msg, from, err := receive(ctx, c, check)
 		switch err {
 		case context.Canceled:
-			ll.Printf("received %d message(s)", recv)
+			ll.Printf("received %d message(s)", count)
 			return nil
 		case errRetry:
 			continue
 		case nil:
-			recv++
-			printMessage(ll, msg, from)
+			count++
+			recv(ll, msg, from)
 		default:
 			return err
 		}
