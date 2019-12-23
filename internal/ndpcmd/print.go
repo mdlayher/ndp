@@ -44,22 +44,22 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 	writef(&s, "router advertisement from: %s:\n", from)
 
 	if ra.CurrentHopLimit > 0 {
-		writef(&s, "    - hop limit:        %d\n", ra.CurrentHopLimit)
+		writef(&s, "  - hop limit:        %d\n", ra.CurrentHopLimit)
 	}
 	if flags != "" {
-		writef(&s, "    - flags:            [%s]\n", flags)
+		writef(&s, "  - flags:            [%s]\n", flags)
 	}
 
-	writef(&s, "    - preference:       %s\n", ra.RouterSelectionPreference)
+	writef(&s, "  - preference:       %s\n", ra.RouterSelectionPreference)
 
 	if ra.RouterLifetime > 0 {
-		writef(&s, "    - router lifetime:  %s\n", ra.RouterLifetime)
+		writef(&s, "  - router lifetime:  %s\n", ra.RouterLifetime)
 	}
 	if ra.ReachableTime != 0 {
-		writef(&s, "    - reachable time:   %s\n", ra.ReachableTime)
+		writef(&s, "  - reachable time:   %s\n", ra.ReachableTime)
 	}
 	if ra.RetransmitTimer != 0 {
-		writef(&s, "    - retransmit timer: %s\n", ra.RetransmitTimer)
+		writef(&s, "  - retransmit timer: %s\n", ra.RetransmitTimer)
 	}
 
 	_, _ = s.WriteString(optionsString(ra.Options))
@@ -92,10 +92,10 @@ func printNA(ll *log.Logger, na *ndp.NeighborAdvertisement, from net.IP) {
 }
 
 const naFormat = `neighbor advertisement from %s:
-    - router:         %t
-    - solicited:      %t
-    - override:       %t
-    - target address: %s
+  - router:         %t
+  - solicited:      %t
+  - override:       %t
+  - target address: %s
 `
 
 func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
@@ -109,7 +109,7 @@ func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
 }
 
 const nsFormat = `neighbor solicitation from %s:
-    - target address: %s
+  - target address: %s
 `
 
 func optionsString(options []ndp.Option) string {
@@ -118,10 +118,10 @@ func optionsString(options []ndp.Option) string {
 	}
 
 	var s strings.Builder
-	s.WriteString("    - options:\n")
+	s.WriteString("  - options:\n")
 
 	for _, o := range options {
-		writef(&s, "        - %s\n", optStr(o))
+		writef(&s, "    - %s\n", optStr(o))
 	}
 
 	return s.String()
