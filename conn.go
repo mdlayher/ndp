@@ -115,6 +115,12 @@ func (c *Conn) SetICMPFilter(f *ipv6.ICMPFilter) error {
 	return c.pc.SetICMPFilter(f)
 }
 
+// SetControlMessage enables the reception of *ipv6.ControlMessages based on
+// the specified flags.
+func (c *Conn) SetControlMessage(cf ipv6.ControlFlags, on bool) error {
+	return c.pc.SetControlMessage(cf, on)
+}
+
 // ReadFrom reads a Message from the Conn and returns its control message and
 // source network address.  Messages sourced from this machine and malformed or
 // unrecognized ICMPv6 messages are filtered.
