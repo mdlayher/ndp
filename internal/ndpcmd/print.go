@@ -26,18 +26,18 @@ func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
 }
 
 func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
-	var flags string
+	var flags []string
 	if ra.ManagedConfiguration {
-		flags += "M"
+		flags = append(flags, "managed")
 	}
 	if ra.OtherConfiguration {
-		flags += "O"
+		flags = append(flags, "other")
 	}
 	if ra.MobileIPv6HomeAgent {
-		flags += "H"
+		flags = append(flags, "mobile")
 	}
 	if ra.NeighborDiscoveryProxy {
-		flags += "P"
+		flags = append(flags, "proxy")
 	}
 
 	var s strings.Builder
@@ -46,8 +46,8 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 	if ra.CurrentHopLimit > 0 {
 		writef(&s, "  - hop limit:        %d\n", ra.CurrentHopLimit)
 	}
-	if flags != "" {
-		writef(&s, "  - flags:            [%s]\n", flags)
+	if len(flags) > 0 {
+		writef(&s, "  - flags:            [%s]\n", strings.Join(flags, ", "))
 	}
 
 	writef(&s, "  - preference:       %s\n", ra.RouterSelectionPreference)
@@ -139,18 +139,18 @@ func optStr(o ndp.Option) string {
 	case *ndp.MTU:
 		return fmt.Sprintf("MTU: %d", *o)
 	case *ndp.PrefixInformation:
-		var flags string
+		var flags []string
 		if o.OnLink {
-			flags += "O"
+			flags = append(flags, "on-link")
 		}
 		if o.AutonomousAddressConfiguration {
-			flags += "A"
+			flags = append(flags, "autonomous")
 		}
 
 		return fmt.Sprintf("prefix information: %s/%d, flags: [%s], valid: %s, preferred: %s",
 			o.Prefix.String(),
 			o.PrefixLength,
-			flags,
+			strings.Join(flags, ", "),
 			o.ValidLifetime,
 			o.PreferredLifetime,
 		)
