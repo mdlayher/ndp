@@ -52,6 +52,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			subs: piTests(),
 		},
 		{
+			name: "route information",
+			subs: riTests(),
+		},
+		{
 			name: "recursive DNS servers",
 			subs: rdnssTests(),
 		},
@@ -163,6 +167,61 @@ func TestOptionUnmarshalError(t *testing.T) {
 				{
 					name: "short",
 					bs:   [][]byte{{0x01}},
+				},
+			},
+		},
+		{
+			name: "route information",
+			o:    &RouteInformation{},
+			subs: []sub{
+				{
+					name: "short",
+					bs:   [][]byte{{0x01}},
+				},
+
+				{
+					name: "bad /0",
+					bs: [][]byte{
+						// Length must be 1-3.
+						{24, 0x04},
+						ndptest.Zero(30),
+					},
+				},
+				{
+					name: "bad /64",
+					bs: [][]byte{
+						// Length must be 2.
+						{24, 0x01},
+						{64, 0x04},
+						{0x00, 0x00, 0x00, 0xff},
+					},
+				},
+				{
+					name: "bad /96",
+					bs: [][]byte{
+						// Length must be 3.
+						{24, 0x04},
+						{96, 0x04},
+						ndptest.Zero(28),
+					},
+				},
+				{
+					name: "bad /255",
+					bs: [][]byte{
+						{24, 0x01},
+						// Invalid IPv6 prefix.
+						{0xff, 0x00},
+						ndptest.Zero(4),
+					},
+				},
+				{
+					name: "bad preference",
+					bs: [][]byte{
+						{24, 0x01},
+						// Reserved preference.
+						{0, 0x10},
+						ndptest.Zero(4),
+					},
 				},
 			},
 		},
@@ -410,6 +469,101 @@ func piTests() []optionSub {
 				{0x00, 0x00, 0x00, 0x00},
 				// Prefix.
 				ndptest.Prefix,
+			},
+			ok: true,
+		},
+	}
+}
+
+func riTests() []optionSub {
+	return []optionSub{
+		{
+			name: "bad, prefix length",
+			os: []Option{
+				&RouteInformation{
+					// Host IP specified.
+					PrefixLength: 64,
+					Prefix:       ndptest.IP,
+				},
+			},
+		},
+		{
+			name: "bad, prefix invalid",
+			os: []Option{
+				&RouteInformation{
+					// Host IP specified.
+					PrefixLength: 255,
+				},
+			},
+		},
+		{
+			name: "ok /0",
+			os: []Option{
+				&RouteInformation{
+					PrefixLength:  0,
+					Preference:    High,
+					RouteLifetime: Infinity,
+					Prefix:        net.IPv6zero,
+				},
+			},
+			bs: [][]byte{
+				// Option type and length.
+				{24, 0x01},
+				// Prefix length.
+				{0},
+				// Preference.
+				{0x08},
+				// Route lifetime.
+				{0xff, 0xff, 0xff, 0xff},
+			},
+			ok: true,
+		},
+		{
+			name: "ok /64",
+			os: []Option{
+				&RouteInformation{
+					PrefixLength:  64,
+					Preference:    Low,
+					RouteLifetime: 1 * time.Second,
+					Prefix:        ndptest.Prefix,
+				},
+			},
+			bs: [][]byte{
+				// Option type and length.
+				{24, 0x02},
+				// Prefix length.
+				{64},
+				// Preference.
+				{0x18},
+				// Route lifetime.
+				{0x00, 0x00, 0x00, 0x01},
+				// Prefix, second half omitted due to /64 length.
+				{0x20, 0x1, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00},
+			},
+			ok: true,
+		},
+		{
+			name: "ok /96",
+			os: []Option{
+				&RouteInformation{
+					PrefixLength:  96,
+					Preference:    Medium,
+					RouteLifetime: 255 * time.Second,
+					Prefix:        ndptest.Prefix,
+				},
+			},
+			bs: [][]byte{
+				// Option type and length.
+				{24, 0x03},
+				// Prefix length.
+				{96},
+				// Preference.
+				{0x00},
+				// Route lifetime.
+				{0x00, 0x00, 0x00, 0xff},
+				// Prefix, full size due to /96 length.
+				{0x20, 0x1, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00},
+				ndptest.Zero(8),
 			},
 			ok: true,
 		},

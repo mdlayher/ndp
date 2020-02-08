@@ -32,6 +32,7 @@ const (
 	optTargetLLA         = 2
 	optPrefixInformation = 3
 	optMTU               = 5
+	optRouteInformation  = 24
 	optRDNSS             = 25
 	optDNSSL             = 31
 )
@@ -251,6 +252,123 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 		// raw.Value is already a copy of b, so just point to the address.
 		Prefix: addr,
 	}
+
+	return nil
+}
+
+var _ Option = &RouteInformation{}
+
+// A RouteInformation is a Route Information option, as described in RFC 4191,
+// Section 2.3.
+type RouteInformation struct {
+	PrefixLength  uint8
+	Preference    Preference
+	RouteLifetime time.Duration
+	Prefix        net.IP
+}
+
+// Code implements Option.
+func (*RouteInformation) Code() byte { return optRouteInformation }
+
+func (ri *RouteInformation) marshal() ([]byte, error) {
+	// Per the RFC:
+	// "The bits in the prefix after the prefix length are reserved and MUST
+	// be initialized to zero by the sender and ignored by the receiver."
+	//
+	// Therefore, any prefix, when masked with its specified length, should be
+	// identical to the prefix itself for it to be valid.
+	err := fmt.Errorf("ndp: invalid route information: %s/%d", ri.Prefix.String(), ri.PrefixLength)
+	mask := net.CIDRMask(int(ri.PrefixLength), 128)
+	if masked := ri.Prefix.Mask(mask); !ri.Prefix.Equal(masked) {
+		return nil, err
+	}
+
+	// Depending on the length of the prefix, we can add fewer bytes to the
+	// option.
+	var iplen int
+	switch {
+	case ri.PrefixLength == 0:
+		iplen = 0
+	case ri.PrefixLength > 0 && ri.PrefixLength < 65:
+		iplen = 1
+	case ri.PrefixLength > 64 && ri.PrefixLength < 129:
+		iplen = 2
+	default:
+		// Invalid IPv6 prefix.
+		return nil, err
+	}
+
+	raw := &RawOption{
+		Type:   ri.Code(),
+		Length: uint8(iplen) + 1,
+		// Prefix length, preference, lifetime, and prefix body as computed by
+		// using iplen.
+		Value: make([]byte, 1+1+4+(iplen*8)),
+	}
+
+	raw.Value[0] = ri.PrefixLength
+
+	// Adjacent bits are reserved.
+	if prf := uint8(ri.Preference); prf != 0 {
+		raw.Value[1] |= (prf << 3)
+	}
+
+	lt := ri.RouteLifetime.Seconds()
+	binary.BigEndian.PutUint32(raw.Value[2:6], uint32(lt))
+
+	copy(raw.Value[6:], ri.Prefix)
+
+	return raw.marshal()
+}
+
+func (ri *RouteInformation) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	// Verify the option's length against prefix length using the rules defined
+	// in the RFC.
+	l := raw.Value[0]
+	err := fmt.Errorf("ndp: invalid route information for /%d prefix", l)
+
+	switch {
+	case l == 0:
+		if raw.Length < 1 || raw.Length > 3 {
+			return err
+		}
+	case l > 0 && l < 65:
+		if raw.Length != 2 {
+			return err
+		}
+	case l > 64 && l < 129:
+		if raw.Length != 3 {
+			return err
+		}
+	default:
+		// Invalid IPv6 prefix.
+		return err
+	}
+
+	// Unpack preference (with adjacent reserved bits) and lifetime values.
+	var (
+		pref = Preference((raw.Value[1] & 0x18) >> 3)
+		lt   = time.Duration(binary.BigEndian.Uint32(raw.Value[2:6])) * time.Second
+	)
+
+	if err := checkPreference(pref); err != nil {
+		return err
+	}
+
+	*ri = RouteInformation{
+		PrefixLength:  l,
+		Preference:    pref,
+		RouteLifetime: lt,
+		Prefix:        make(net.IP, net.IPv6len),
+	}
+
+	// Copy up to the specified number of IP bytes into the prefix.
+	copy(ri.Prefix, raw.Value[6:6+(l/8)])
 
 	return nil
 }
@@ -609,6 +727,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(MTU)
 		case optPrefixInformation:
 			o = new(PrefixInformation)
+		case optRouteInformation:
+			o = new(RouteInformation)
 		case optRDNSS:
 			o = new(RecursiveDNSServer)
 		case optDNSSL:
