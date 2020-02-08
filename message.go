@@ -243,7 +243,7 @@ type RouterAdvertisement struct {
 	ManagedConfiguration      bool
 	OtherConfiguration        bool
 	MobileIPv6HomeAgent       bool
-	RouterSelectionPreference RouterSelectionPreference
+	RouterSelectionPreference Preference
 	NeighborDiscoveryProxy    bool
 	RouterLifetime            time.Duration
 	ReachableTime             time.Duration
@@ -251,23 +251,23 @@ type RouterAdvertisement struct {
 	Options                   []Option
 }
 
-// A RouterSelectionPreference is a router selection preference value as
+// A Preference is a NDP router selection or route preference value as
 // described in RFC 4191, Section 2.1.
-type RouterSelectionPreference int
+type Preference int
 
-// Possible RouterSelectionPreference values.
+// Possible Preference values.
 const (
-	Medium      RouterSelectionPreference = 0
-	High        RouterSelectionPreference = 1
-	prfReserved RouterSelectionPreference = 2
-	Low         RouterSelectionPreference = 3
+	Medium      Preference = 0
+	High        Preference = 1
+	prfReserved Preference = 2
+	Low         Preference = 3
 )
 
 // Type implements Message.
 func (ra *RouterAdvertisement) Type() ipv6.ICMPType { return ipv6.ICMPTypeRouterAdvertisement }
 
 func (ra *RouterAdvertisement) marshal() ([]byte, error) {
-	if err := checkPrf(ra.RouterSelectionPreference); err != nil {
+	if err := checkPreference(ra.RouterSelectionPreference); err != nil {
 		return nil, err
 	}
 
@@ -325,7 +325,7 @@ func (ra *RouterAdvertisement) unmarshal(b []byte) error {
 		mFlag = (b[1] & 0x80) != 0
 		oFlag = (b[1] & 0x40) != 0
 		hFlag = (b[1] & 0x20) != 0
-		prf   = RouterSelectionPreference((b[1] & 0x18) >> 3)
+		prf   = Preference((b[1] & 0x18) >> 3)
 		pFlag = (b[1] & 0x04) != 0
 
 		lifetime = time.Duration(binary.BigEndian.Uint16(b[2:4])) * time.Second
@@ -408,8 +408,8 @@ func checkIPv6(ip net.IP) error {
 	return nil
 }
 
-// checkPrf checks the validity of a RouterSelectionPreference value.
-func checkPrf(prf RouterSelectionPreference) error {
+// checkPreference checks the validity of a Preference value.
+func checkPreference(prf Preference) error {
 	switch prf {
 	case Low, Medium, High:
 		return nil

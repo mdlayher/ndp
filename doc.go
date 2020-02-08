@@ -2,4 +2,4 @@
 // RFC 4861.
 package ndp
 
-//go:generate stringer -type=RouterSelectionPreference -output=string.go
+//go:generate stringer -type=Preference -output=string.go
