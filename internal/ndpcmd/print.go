@@ -156,6 +156,13 @@ func optStr(o ndp.Option) string {
 		)
 	case *ndp.RawOption:
 		return fmt.Sprintf("type: %03d, value: %v", o.Type, o.Value)
+	case *ndp.RouteInformation:
+		return fmt.Sprintf("route information: %s/%d, preference: %s, lifetime: %s",
+			o.Prefix.String(),
+			o.PrefixLength,
+			o.Preference.String(),
+			o.RouteLifetime,
+		)
 	case *ndp.RecursiveDNSServer:
 		var ss []string
 		for _, s := range o.Servers {
