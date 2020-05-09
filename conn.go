@@ -54,6 +54,14 @@ func Dial(ifi *net.Interface, addr Addr) (*Conn, net.IP, error) {
 
 	pc := ic.IPv6PacketConn()
 
+	// Hop limit is always 255, per RFC 4861.
+	if err := pc.SetHopLimit(HopLimit); err != nil {
+		return nil, nil, err
+	}
+	if err := pc.SetMulticastHopLimit(HopLimit); err != nil {
+		return nil, nil, err
+	}
+
 	// Calculate and place ICMPv6 checksum at correct offset in all messages.
 	const chkOff = 2
 	if err := pc.SetChecksum(true, chkOff); err != nil {
