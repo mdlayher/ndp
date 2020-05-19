@@ -105,6 +105,7 @@ func TestOptionUnmarshalError(t *testing.T) {
 	type sub struct {
 		name string
 		bs   [][]byte
+		ok   bool
 	}
 
 	tests := []struct {
@@ -190,11 +191,21 @@ func TestOptionUnmarshalError(t *testing.T) {
 				{
 					name: "bad /64",
 					bs: [][]byte{
-						// Length must be 2.
+						// Length must be 2-3.
 						{24, 0x01},
 						{64, 0x04},
 						{0x00, 0x00, 0x00, 0xff},
 					},
+				},
+				{
+					name: "ok /64",
+					bs: [][]byte{
+						// Length must be 2-3.
+						{24, 0x03},
+						{64, 0x04},
+						ndptest.Zero(20),
+					},
+					ok: true,
 				},
 				{
 					name: "bad /96",
@@ -328,11 +339,15 @@ func TestOptionUnmarshalError(t *testing.T) {
 			for _, st := range tt.subs {
 				t.Run(st.name, func(t *testing.T) {
 					err := tt.o.unmarshal(ndptest.Merge(st.bs))
-
-					if err == nil {
+					if err != nil && st.ok {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if err == nil && !st.ok {
 						t.Fatal("expected an error, but none occurred")
-					} else {
+					}
+					if err != nil {
 						t.Logf("OK error: %v", err)
+						return
 					}
 				})
 			}
