@@ -105,7 +105,6 @@ func TestOptionUnmarshalError(t *testing.T) {
 	type sub struct {
 		name string
 		bs   [][]byte
-		ok   bool
 	}
 
 	tests := []struct {
@@ -196,16 +195,6 @@ func TestOptionUnmarshalError(t *testing.T) {
 						{64, 0x04},
 						{0x00, 0x00, 0x00, 0xff},
 					},
-				},
-				{
-					name: "ok /64",
-					bs: [][]byte{
-						// Length must be 2-3.
-						{24, 0x03},
-						{64, 0x04},
-						ndptest.Zero(20),
-					},
-					ok: true,
 				},
 				{
 					name: "bad /96",
@@ -339,15 +328,11 @@ func TestOptionUnmarshalError(t *testing.T) {
 			for _, st := range tt.subs {
 				t.Run(st.name, func(t *testing.T) {
 					err := tt.o.unmarshal(ndptest.Merge(st.bs))
-					if err != nil && st.ok {
-						t.Fatalf("unexpected error: %v", err)
-					}
-					if err == nil && !st.ok {
+
+					if err == nil {
 						t.Fatal("expected an error, but none occurred")
-					}
-					if err != nil {
+					} else {
 						t.Logf("OK error: %v", err)
-						return
 					}
 				})
 			}
@@ -391,6 +376,65 @@ func TestPrefixInformationUnmarshalPrefixLength(t *testing.T) {
 	// specified length.
 	if diff := cmp.Diff(want, pi.Prefix); diff != "" {
 		t.Fatalf("unexpected prefix (-want +got):\n%s", diff)
+	}
+}
+
+func TestRouteInformationUnmarshalPrefixLength(t *testing.T) {
+	// This route prefix easily fits in 2 bytes, but this test will also verify
+	// it can be decoded from 3 bytes due to device behaviors seen in the wild.
+	var (
+		prefix       = ndptest.MustIPv6("2001:db8::")
+		mask   uint8 = 64
+	)
+
+	tests := []struct {
+		name   string
+		length uint8
+		idx    int
+	}{
+		{
+			name:   "length 2",
+			length: 2,
+			idx:    net.IPv6len / 2,
+		},
+		{
+			name:   "length 3",
+			length: 3,
+			idx:    net.IPv6len,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bs := [][]byte{
+				// Option type and length. Note that a /64 would normally
+				// fit in length 2, but this option was received with padding
+				// resulting in length 3.
+				{24, tt.length},
+				// Prefix length.
+				{mask},
+				// Preference.
+				{0x00},
+				// Route lifetime.
+				ndptest.Zero(4),
+				// Prefix, possibly in a shortened form.
+				prefix[:tt.idx],
+			}
+
+			ri := new(RouteInformation)
+			if err := ri.unmarshal(ndptest.Merge(bs)); err != nil {
+				t.Fatalf("failed to unmarshal: %v", err)
+			}
+
+			want := &RouteInformation{
+				PrefixLength: mask,
+				Prefix:       prefix,
+			}
+
+			if diff := cmp.Diff(want, ri); diff != "" {
+				t.Fatalf("unexpected route information (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
 

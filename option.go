@@ -338,7 +338,8 @@ func (ri *RouteInformation) unmarshal(b []byte) error {
 			return err
 		}
 	case l > 0 && l < 65:
-		if raw.Length < 2 || raw.Length > 3 {
+		// Some devices will use length 3 anyway for a route that fits in /64.
+		if raw.Length != 2 && raw.Length != 3 {
 			return err
 		}
 	case l > 64 && l < 129:
