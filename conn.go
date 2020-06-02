@@ -1,6 +1,7 @@
 package ndp
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -130,12 +131,15 @@ func (c *Conn) SetControlMessage(cf ipv6.ControlFlags, on bool) error {
 }
 
 // ReadFrom reads a Message from the Conn and returns its control message and
-// source network address.  Messages sourced from this machine and malformed or
+// source network address. Messages sourced from this machine and malformed or
 // unrecognized ICMPv6 messages are filtered.
+//
+// If more control and/or a more efficient low-level API are required, see
+// ReadRaw.
 func (c *Conn) ReadFrom() (Message, *ipv6.ControlMessage, net.IP, error) {
 	b := make([]byte, c.ifi.MTU)
 	for {
-		n, cm, src, err := c.pc.ReadFrom(b)
+		n, cm, ip, err := c.ReadRaw(b)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -143,19 +147,36 @@ func (c *Conn) ReadFrom() (Message, *ipv6.ControlMessage, net.IP, error) {
 		// Filter message if:
 		//   - not testing the Conn implementation.
 		//   - this address sent this message.
-		ip := srcIP(src)
 		if !c.test() && ip.Equal(c.addr.IP) {
 			continue
 		}
 
-		// Filter any malformed and unrecognized messages.
 		m, err := ParseMessage(b[:n])
 		if err != nil {
-			continue
+			// Filter parsing errors on the caller's behalf.
+			if errors.Is(err, errParseMessage) {
+				continue
+			}
+
+			return nil, nil, nil, err
 		}
 
 		return m, cm, ip, nil
 	}
+}
+
+// ReadRaw reads ICMPv6 message bytes into b from the Conn and returns the
+// number of bytes read, the control message, and the source network address.
+//
+// Most callers should use ReadFrom instead, which parses bytes into Messages
+// and also handles malformed and unrecognized ICMPv6 messages.
+func (c *Conn) ReadRaw(b []byte) (int, *ipv6.ControlMessage, net.IP, error) {
+	n, cm, src, err := c.pc.ReadFrom(b)
+	if err != nil {
+		return n, nil, nil, err
+	}
+
+	return n, cm, srcIP(src), nil
 }
 
 // WriteTo writes a Message to the Conn, with an optional control message and
@@ -168,19 +189,24 @@ func (c *Conn) WriteTo(m Message, cm *ipv6.ControlMessage, dst net.IP) error {
 		return err
 	}
 
+	return c.writeRaw(b, cm, dst)
+}
+
+// writeRaw allows writing raw bytes with a Conn.
+func (c *Conn) writeRaw(b []byte, cm *ipv6.ControlMessage, dst net.IP) error {
 	// Set reasonable defaults if control message is nil.
 	if cm == nil {
 		cm = c.cm
 	}
 
-	_, err = c.pc.WriteTo(b, cm, c.dstAddr(dst, c.ifi.Name))
+	_, err := c.pc.WriteTo(b, cm, c.dstAddr(dst, c.ifi.Name))
 	return err
 }
 
 // dstAddr returns a different net.Addr type depending on if the Conn is
 // configured for testing.
 func (c *Conn) dstAddr(ip net.IP, zone string) net.Addr {
-	if !c.test() {
+	if !c.test() || c.udpTestPort == 0 {
 		return &net.IPAddr{
 			IP:   ip,
 			Zone: zone,

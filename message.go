@@ -72,17 +72,21 @@ func MarshalMessageChecksum(m Message, source, destination net.IP) ([]byte, erro
 	return marshalMessage(m, icmp.IPv6PseudoHeader(source, destination))
 }
 
+// errParseMessage is a sentinel which indicates an error from ParseMessage.
+var errParseMessage = errors.New("failed to parse message")
+
 // ParseMessage parses a Message from its binary form after determining its
 // type from a leading ICMPv6 message.
 func ParseMessage(b []byte) (Message, error) {
 	if len(b) < icmpLen {
-		return nil, io.ErrUnexpectedEOF
+		return nil, fmt.Errorf("ndp: ICMPv6 message too short: %w", errParseMessage)
 	}
 
 	// TODO(mdlayher): verify checksum?
 
 	var m Message
-	switch t := ipv6.ICMPType(b[0]); t {
+	t := ipv6.ICMPType(b[0])
+	switch t {
 	case ipv6.ICMPTypeNeighborAdvertisement:
 		m = new(NeighborAdvertisement)
 	case ipv6.ICMPTypeNeighborSolicitation:
@@ -92,11 +96,11 @@ func ParseMessage(b []byte) (Message, error) {
 	case ipv6.ICMPTypeRouterSolicitation:
 		m = new(RouterSolicitation)
 	default:
-		return nil, fmt.Errorf("ndp: unrecognized ICMPv6 type: %d", t)
+		return nil, fmt.Errorf("ndp: unrecognized ICMPv6 type %d: %w", t, errParseMessage)
 	}
 
 	if err := m.unmarshal(b[icmpLen:]); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ndp: failed to unmarshal %s: %w", t, errParseMessage)
 	}
 
 	return m, nil

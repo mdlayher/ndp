@@ -1,6 +1,7 @@
 package ndp_test
 
 import (
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -173,8 +174,16 @@ func TestParseMessageError(t *testing.T) {
 			for _, st := range tt.subs {
 				t.Run(st.name, func(t *testing.T) {
 					ttb := append(tt.header, ndptest.Merge(st.bs)...)
-					if _, err := ndp.ParseMessage(ttb); err == nil {
+					_, err := ndp.ParseMessage(ttb)
+					if err == nil {
 						t.Fatal("expected an error, but none occurred")
+					}
+
+					// Rather then exporting errParseMessage, we will just check
+					// for a wrapped substring here for now.
+					perr := errors.Unwrap(err)
+					if perr.Error() != "failed to parse message" {
+						t.Fatalf("unexpected error: %v", err)
 					}
 				})
 			}

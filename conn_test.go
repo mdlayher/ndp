@@ -1,9 +1,12 @@
 package ndp
 
 import (
+	"bytes"
+	"errors"
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/mdlayher/ndp/internal/ndptest"
@@ -17,6 +20,10 @@ func TestConn(t *testing.T) {
 		{
 			name: "echo",
 			fn:   testConnEcho,
+		},
+		{
+			name: "filter invalid",
+			fn:   testConnFilterInvalid,
 		},
 	}
 
@@ -55,6 +62,80 @@ func testConnEcho(t *testing.T, c1, c2 *Conn, addr net.IP) {
 	m, _, _, err := c1.ReadFrom()
 	if err != nil {
 		t.Fatalf("failed to read from c1: %v", err)
+	}
+
+	wg.Wait()
+
+	if diff := cmp.Diff(rs, m); diff != "" {
+		t.Fatalf("unexpected message (-want +got):\n%s", diff)
+	}
+}
+
+func testConnFilterInvalid(t *testing.T, c1, c2 *Conn, addr net.IP) {
+	// Echo this message between two connections.
+	rs := &RouterSolicitation{}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	sigC := make(chan struct{})
+	go func() {
+		defer wg.Done()
+
+		// Wait for the caller to send us a message, then send:
+		//  - invalid message (filtered)
+		//  - valid message
+		// And finally force a timeout to verify the ReadFrom error check.
+		m, _, _, err := c2.ReadFrom()
+		if err != nil {
+			panicf("failed to read from c2: %v", err)
+		}
+
+		if err := c2.writeRaw(bytes.Repeat([]byte{0xff}, 255), nil, addr); err != nil {
+			panicf("failed to write invalid from c2: %v", err)
+		}
+
+		// Write in lockstep and wait for the consumer to acknowledge the write.
+		if err := c2.WriteTo(m, nil, addr); err != nil {
+			panicf("failed to write valid from c2: %v", err)
+		}
+		<-sigC
+
+		if err := c1.SetReadDeadline(time.Unix(1, 0)); err != nil {
+			panicf("failed to interrupt c1: %v", err)
+		}
+		<-sigC
+	}()
+
+	if err := c1.WriteTo(rs, nil, addr); err != nil {
+		t.Fatalf("failed to write from c1: %v", err)
+	}
+
+	var m Message
+	for i := 0; i < 2; i++ {
+		// Acknowledge each write from the other Conn.
+		msg, _, _, err := c1.ReadFrom()
+		sigC <- struct{}{}
+
+		if err == nil {
+			m = msg
+			continue
+		}
+
+		switch i {
+		case 0:
+			t.Fatalf("failed to read from c1: %v", err)
+		case 1:
+			var nerr net.Error
+			if !errors.As(err, &nerr) {
+				t.Fatalf("error is not net.Error: %v", err)
+			}
+			if !nerr.Timeout() {
+				t.Fatal("error did not indicate a timeout")
+			}
+		default:
+			panic("too many loop iterations")
+		}
 	}
 
 	wg.Wait()
