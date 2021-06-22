@@ -31,14 +31,15 @@ type Conn struct {
 	udpTestPort int
 }
 
-// Dial dials a NDP connection using the specified interface and address type.
+// Listen creates a NDP connection using the specified interface and address
+// type.
 //
 // As a special case, literal IPv6 addresses may be specified to bind to a
-// specific address for an interface.  If the IPv6 address does not exist on
-// the interface, an error will be returned.
+// specific address for an interface.  If the IPv6 address does not exist on the
+// interface, an error will be returned.
 //
-// Dial returns a Conn and the chosen IPv6 address of the interface.
-func Dial(ifi *net.Interface, addr Addr) (*Conn, net.IP, error) {
+// Listen returns a Conn and the chosen IPv6 address of the interface.
+func Listen(ifi *net.Interface, addr Addr) (*Conn, net.IP, error) {
 	addrs, err := ifi.Addrs()
 	if err != nil {
 		return nil, nil, err

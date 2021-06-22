@@ -37,7 +37,7 @@ func testUDPConn(t *testing.T) (*Conn, *Conn, net.IP, func()) {
 
 func icmpConn(t *testing.T, ifi *net.Interface) (*Conn, net.IP) {
 	// Wire up a standard ICMPv6 NDP connection.
-	c, addr, err := Dial(ifi, LinkLocal)
+	c, addr, err := Listen(ifi, LinkLocal)
 	if err != nil {
 		oerr, ok := err.(*net.OpError)
 		if !ok && (ok && !os.IsPermission(err)) {

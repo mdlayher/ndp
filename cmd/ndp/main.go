@@ -40,10 +40,9 @@ func main() {
 		ll.Fatalf("failed to get interface: %v", err)
 	}
 
-	addr := ndp.Addr(*addrFlag)
-	c, ip, err := ndp.Dial(ifi, addr)
+	c, ip, err := ndp.Listen(ifi, ndp.Addr(*addrFlag))
 	if err != nil {
-		ll.Fatalf("failed to dial NDP connection: %v", err)
+		ll.Fatalf("failed to open NDP connection: %v", err)
 	}
 	defer c.Close()
 
