@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -63,10 +64,13 @@ func Dial(ifi *net.Interface, addr Addr) (*Conn, net.IP, error) {
 		return nil, nil, err
 	}
 
-	// Calculate and place ICMPv6 checksum at correct offset in all messages.
-	const chkOff = 2
-	if err := pc.SetChecksum(true, chkOff); err != nil {
-		return nil, nil, err
+	if runtime.GOOS != "windows" {
+		// Calculate and place ICMPv6 checksum at correct offset in all
+		// messages (not implemented by golang.org/x/net/ipv6 on Windows).
+		const chkOff = 2
+		if err := pc.SetChecksum(true, chkOff); err != nil {
+			return nil, nil, fmt.Errorf("set checksum: %w", err)
+		}
 	}
 
 	return newConn(pc, ipAddr, ifi)
