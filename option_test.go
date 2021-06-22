@@ -60,8 +60,12 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			subs: rdnssTests(),
 		},
 		{
-			name: "DNS search lists",
+			name: "DNS search list",
 			subs: dnsslTests(),
+		},
+		{
+			name: "captive portal",
+			subs: cpTests(),
 		},
 	}
 
@@ -308,7 +312,7 @@ func TestOptionUnmarshalError(t *testing.T) {
 					},
 				},
 				{
-					name: "no domains",
+					name: "no domains, padded",
 					bs: [][]byte{
 						{31, 2},
 						// Reserved.
@@ -317,6 +321,20 @@ func TestOptionUnmarshalError(t *testing.T) {
 						ndptest.Zero(4),
 						// No domains.
 						ndptest.Zero(8),
+					},
+				},
+			},
+		},
+		{
+			name: "captive portal",
+			o:    new(CaptivePortal),
+			subs: []sub{
+				{
+					name: "null URI",
+					bs: [][]byte{
+						{37, 1},
+						// URI.
+						ndptest.Zero(6),
 					},
 				},
 			},
@@ -801,6 +819,43 @@ func dnsslTests() []optionSub {
 				{7}, []byte("example"),
 				{3}, []byte("com"),
 				{0x00},
+				// Padding.
+				ndptest.Zero(2),
+			},
+			ok: true,
+		},
+	}
+}
+
+func cpTests() []optionSub {
+	return []optionSub{
+		{
+			name: "bad, empty",
+			os: []Option{
+				NewCaptivePortal(""),
+			},
+		},
+		{
+			name: "ok, no padding",
+			os: []Option{
+				NewCaptivePortal("urn:xx"),
+			},
+			bs: [][]byte{
+				{37, 1},
+				// URI.
+				{'u', 'r', 'n', ':', 'x', 'x'},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, padding",
+			os: []Option{
+				NewCaptivePortal("capport:unrestricted"),
+			},
+			bs: [][]byte{
+				{37, 3},
+				// URI.
+				{'c', 'a', 'p', 'p', 'o', 'r', 't', ':', 'u', 'n', 'r', 'e', 's', 't', 'r', 'i', 'c', 't', 'e', 'd'},
 				// Padding.
 				ndptest.Zero(2),
 			},

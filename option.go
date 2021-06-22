@@ -35,6 +35,7 @@ const (
 	optRouteInformation  = 24
 	optRDNSS             = 25
 	optDNSSL             = 31
+	optCaptivePortal     = 37
 )
 
 // A Direction specifies the direction of a LinkLayerAddress Option as a source
@@ -634,6 +635,68 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 	return nil
 }
 
+// A CaptivePortal is a Captive-Portal option, as described in RFC 8910, Section
+// 2.3.
+type CaptivePortal string
+
+// NewCaptivePortal produces a CaptivePortal Option for the input URI string.
+func NewCaptivePortal(uri string) *CaptivePortal {
+	// TODO(mdlayher): validate URI?
+	cp := CaptivePortal(uri)
+	return &cp
+}
+
+// Code implements Option.
+func (CaptivePortal) Code() byte { return optCaptivePortal }
+
+func (cp *CaptivePortal) marshal() ([]byte, error) {
+	if len(*cp) == 0 {
+		return nil, errors.New("ndp: captive portal option requires a non-empty URI")
+	}
+
+	// TODO(mdlayher): validate URI?
+
+	// Pad up to next unit of 8 bytes including 2 bytes for code, length, and
+	// bytes for the URI string. Extra bytes will be null.
+	l := len(*cp)
+	if r := (l + 2) % 8; r != 0 {
+		l += 8 - r
+	}
+
+	value := make([]byte, l)
+	copy(value, []byte(*cp))
+
+	raw := &RawOption{
+		Type:   cp.Code(),
+		Length: (uint8(l) + 2) / 8,
+		Value:  value,
+	}
+
+	return raw.marshal()
+}
+
+func (cp *CaptivePortal) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	// Don't allow a null URI.
+	if len(raw.Value) == 0 || raw.Value[0] == 0x00 {
+		return errors.New("ndp: captive portal URI is null")
+	}
+
+	// Find any trailing null bytes and trim them away before setting the URI.
+	i := bytes.Index(raw.Value, []byte{0x00})
+	if i == -1 {
+		i = len(raw.Value)
+	}
+
+	*cp = CaptivePortal(string(raw.Value[:i]))
+
+	return nil
+}
+
 var _ Option = &RawOption{}
 
 // A RawOption is an Option in its raw and unprocessed format.  Options which
@@ -734,6 +797,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(RecursiveDNSServer)
 		case optDNSSL:
 			o = new(DNSSearchList)
+		case optCaptivePortal:
+			o = new(CaptivePortal)
 		default:
 			o = new(RawOption)
 		}
