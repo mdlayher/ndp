@@ -102,9 +102,20 @@ func (c *Conn) Close() error {
 	return c.pc.Close()
 }
 
+// SetDeadline sets the read and write deadlines for Conn.  It is
+// equivalent to calling both SetReadDeadline and SetWriteDeadline.
+func (c *Conn) SetDeadline(t time.Time) error {
+	return c.pc.SetDeadline(t)
+}
+
 // SetReadDeadline sets a deadline for the next NDP message to arrive.
 func (c *Conn) SetReadDeadline(t time.Time) error {
 	return c.pc.SetReadDeadline(t)
+}
+
+// SetWriteDeadline sets a deadline for the next NDP message to be written.
+func (c *Conn) SetWriteDeadline(t time.Time) error {
+	return c.pc.SetWriteDeadline(t)
 }
 
 // JoinGroup joins the specified multicast group.
