@@ -179,16 +179,20 @@ func doRA(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, prefix net.IP
 func sendRS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr) error {
 	ll := log.New(os.Stderr, "ndp rs> ", 0)
 
-	ll.Printf("router solicitation:\n    - source link-layer address: %s", addr.String())
+	// Non-Ethernet interfaces (such as PPPoE) may not have a MAC address, so
+	// optionally set the source LLA option if addr is set.
+	m := &ndp.RouterSolicitation{}
+	msg := "router solicitation:"
+	if addr != nil {
+		msg += fmt.Sprintf("\n  - source link-layer address: %s", addr.String())
 
-	m := &ndp.RouterSolicitation{
-		Options: []ndp.Option{
-			&ndp.LinkLayerAddress{
-				Direction: ndp.Source,
-				Addr:      addr,
-			},
-		},
+		m.Options = append(m.Options, &ndp.LinkLayerAddress{
+			Direction: ndp.Source,
+			Addr:      addr,
+		})
 	}
+
+	ll.Println(msg)
 
 	// Expect any router advertisement message.
 	check := func(m ndp.Message) bool {

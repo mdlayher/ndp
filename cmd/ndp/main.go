@@ -76,8 +76,16 @@ func main() {
 		cancel()
 	}()
 
+	// Non-Ethernet interfaces (such as PPPoE) may not have a MAC address.
+	var mac string
+	if ifi.HardwareAddr != nil {
+		mac = ifi.HardwareAddr.String()
+	} else {
+		mac = "none"
+	}
+
 	ll.Printf("interface: %s, link-layer address: %s, IPv6 address: %s",
-		ifi.Name, ifi.HardwareAddr, ip)
+		ifi.Name, mac, ip)
 
 	if err := ndpcmd.Run(ctx, c, ifi, flag.Arg(0), target, prefix); err != nil {
 		// Context cancel means a signal was sent, so no need to log an error.
