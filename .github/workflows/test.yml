@@ -1,0 +1,39 @@
+name: Linux Test
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    branches:
+      - '*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        go-version: [1.13, 1.17]
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Show IPv6 addresses
+      run: ip -6 addr show
+
+    - name: Run tests
+      run: go test -race -tags gofuzz ./...
+
+    - name: Build test binary
+      run: go test -c -race
+
+    - name: Run integration tests
+      run: sudo ./ndp.test -test.v -test.run TestConn
