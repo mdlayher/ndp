@@ -115,8 +115,10 @@ func findInterface(name string) (*net.Interface, error) {
 	}
 
 	for _, ifi := range ifis {
-		// Is the interface up and not a loopback?
-		if ifi.Flags&net.FlagUp != 1 || ifi.Flags&net.FlagLoopback != 0 {
+		// Is the interface up, multicast, and not a loopback?
+		if ifi.Flags&net.FlagUp == 0 ||
+			ifi.Flags&net.FlagMulticast == 0 ||
+			ifi.Flags&net.FlagLoopback != 0 {
 			continue
 		}
 
