@@ -6,12 +6,20 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/mdlayher/ndp"
 )
 
-func sendReceiveLoop(ctx context.Context, c *ndp.Conn, ll *log.Logger, m ndp.Message, dst net.IP, check func(m ndp.Message) bool) error {
+func sendReceiveLoop(
+	ctx context.Context,
+	c *ndp.Conn,
+	ll *log.Logger,
+	m ndp.Message,
+	dst netip.Addr,
+	check func(m ndp.Message) bool,
+) error {
 	for i := 0; ; i++ {
 		msg, from, err := sendReceive(ctx, c, m, dst, check)
 		switch err {
@@ -37,7 +45,7 @@ func receiveLoop(
 	c *ndp.Conn,
 	ll *log.Logger,
 	check func(m ndp.Message) bool,
-	recv func(ll *log.Logger, msg ndp.Message, from net.IP),
+	recv func(ll *log.Logger, msg ndp.Message, from netip.Addr),
 ) error {
 	if recv == nil {
 		recv = printMessage
@@ -63,24 +71,34 @@ func receiveLoop(
 
 var errRetry = errors.New("retry")
 
-func sendReceive(ctx context.Context, c *ndp.Conn, m ndp.Message, dst net.IP, check func(m ndp.Message) bool) (ndp.Message, net.IP, error) {
+func sendReceive(
+	ctx context.Context,
+	c *ndp.Conn,
+	m ndp.Message,
+	dst netip.Addr,
+	check func(m ndp.Message) bool,
+) (ndp.Message, netip.Addr, error) {
 	if err := c.WriteTo(m, nil, dst); err != nil {
-		return nil, nil, fmt.Errorf("failed to write message: %v", err)
+		return nil, netip.Addr{}, fmt.Errorf("failed to write message: %v", err)
 	}
 
 	return receive(ctx, c, check)
 }
 
-func receive(ctx context.Context, c *ndp.Conn, check func(m ndp.Message) bool) (ndp.Message, net.IP, error) {
+func receive(
+	ctx context.Context,
+	c *ndp.Conn,
+	check func(m ndp.Message) bool,
+) (ndp.Message, netip.Addr, error) {
 	if err := c.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
-		return nil, nil, fmt.Errorf("failed to set deadline: %v", err)
+		return nil, netip.Addr{}, fmt.Errorf("failed to set deadline: %v", err)
 	}
 
 	msg, _, from, err := c.ReadFrom()
 	if err == nil {
 		if check != nil && !check(msg) {
 			// Read a message, but it isn't the one we want.  Keep trying.
-			return nil, nil, errRetry
+			return nil, netip.Addr{}, errRetry
 		}
 
 		// Got a message that passed the check, if check was not nil.
@@ -90,14 +108,14 @@ func receive(ctx context.Context, c *ndp.Conn, check func(m ndp.Message) bool) (
 	// Was the context canceled already?
 	select {
 	case <-ctx.Done():
-		return nil, nil, ctx.Err()
+		return nil, netip.Addr{}, ctx.Err()
 	default:
 	}
 
 	// Was the error caused by a read timeout, and should the loop continue?
 	if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
-		return nil, nil, errRetry
+		return nil, netip.Addr{}, errRetry
 	}
 
-	return nil, nil, fmt.Errorf("failed to read message: %v", err)
+	return nil, netip.Addr{}, fmt.Errorf("failed to read message: %v", err)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"time"
 
@@ -20,11 +21,17 @@ var (
 )
 
 // Run runs the ndp utility.
-func Run(ctx context.Context, c *ndp.Conn, ifi *net.Interface, op string, target, prefix net.IP) error {
-	if op != "ns" && target != nil {
+func Run(
+	ctx context.Context,
+	c *ndp.Conn,
+	ifi *net.Interface,
+	op string,
+	target, prefix netip.Addr,
+) error {
+	if op != "ns" && target.IsValid() {
 		return errTargetOp
 	}
-	if op != "ra" && prefix != nil {
+	if op != "ra" && prefix.IsValid() {
 		return errPrefixOp
 	}
 
@@ -35,7 +42,7 @@ func Run(ctx context.Context, c *ndp.Conn, ifi *net.Interface, op string, target
 	case "ns":
 		return sendNS(ctx, c, ifi.HardwareAddr, target)
 	case "ra":
-		if prefix == nil || prefix.Equal(net.IPv6zero) {
+		if !prefix.IsValid() || prefix == netip.IPv6Unspecified() {
 			return errors.New("flag '-p' is required for router advertisement operation")
 		}
 
@@ -53,7 +60,7 @@ func listen(ctx context.Context, c *ndp.Conn) error {
 
 	// Also listen for router solicitations from other hosts, even though we
 	// will never reply to them.
-	if err := c.JoinGroup(net.IPv6linklocalallrouters); err != nil {
+	if err := c.JoinGroup(netip.MustParseAddr("ff02::2")); err != nil {
 		return err
 	}
 
@@ -65,7 +72,7 @@ func listen(ctx context.Context, c *ndp.Conn) error {
 	return nil
 }
 
-func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target net.IP) error {
+func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target netip.Addr) error {
 	ll := log.New(os.Stderr, "ndp ns> ", 0)
 
 	ll.Printf("neighbor solicitation:\n    - source link-layer address: %s", addr.String())
@@ -94,7 +101,7 @@ func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target net.
 			return false
 		}
 
-		return na.TargetAddress.Equal(target)
+		return na.TargetAddress == target
 	}
 
 	if err := sendReceiveLoop(ctx, c, ll, m, snm, check); err != nil {
@@ -108,7 +115,7 @@ func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target net.
 	return nil
 }
 
-func doRA(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, prefix net.IP) error {
+func doRA(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, prefix netip.Addr) error {
 	ll := log.New(os.Stderr, "ndp ra> ", 0)
 
 	ll.Printf("advertising prefix %s/64 for SLAAC", prefix)
@@ -141,13 +148,13 @@ func doRA(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, prefix net.IP
 
 	// Trigger an RA whenever an RS is received.
 	rsC := make(chan struct{})
-	recv := func(ll *log.Logger, msg ndp.Message, from net.IP) {
+	recv := func(ll *log.Logger, msg ndp.Message, from netip.Addr) {
 		printMessage(ll, m, from)
 		rsC <- struct{}{}
 	}
 
 	// We are now a "router".
-	if err := c.JoinGroup(net.IPv6linklocalallrouters); err != nil {
+	if err := c.JoinGroup(netip.MustParseAddr("ff02::2")); err != nil {
 		return fmt.Errorf("failed to join multicast group: %v", err)
 	}
 
@@ -155,7 +162,7 @@ func doRA(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, prefix net.IP
 	eg.Go(func() error {
 		// Send messages until cancelation or error.
 		for {
-			if err := c.WriteTo(m, nil, net.IPv6linklocalallnodes); err != nil {
+			if err := c.WriteTo(m, nil, netip.IPv6LinkLocalAllNodes()); err != nil {
 				return fmt.Errorf("failed to send router advertisement: %v", err)
 			}
 
@@ -200,7 +207,7 @@ func sendRS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr) error {
 		return ok
 	}
 
-	if err := sendReceiveLoop(ctx, c, ll, m, net.IPv6linklocalallrouters, check); err != nil {
+	if err := sendReceiveLoop(ctx, c, ll, m, netip.MustParseAddr("ff02::2"), check); err != nil {
 		if err == context.Canceled {
 			return err
 		}

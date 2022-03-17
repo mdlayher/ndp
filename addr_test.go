@@ -2,10 +2,10 @@ package ndp
 
 import (
 	"net"
+	"net/netip"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/mdlayher/ndp/internal/ndptest"
 )
 
 func Test_chooseAddr(t *testing.T) {
@@ -14,11 +14,11 @@ func Test_chooseAddr(t *testing.T) {
 
 	var (
 		ip4 = net.IPv4(192, 168, 1, 1).To4()
-		ip6 = ndptest.MustIPv6("2001:db8::1000")
+		ip6 = mustIPv6("2001:db8::1000")
 
-		gua = ndptest.MustIPv6("2001:db8::1")
-		ula = ndptest.MustIPv6("fc00::1")
-		lla = ndptest.MustIPv6("fe80::1")
+		gua = mustIPv6("2001:db8::1")
+		ula = mustIPv6("fc00::1")
+		lla = mustIPv6("fe80::1")
 	)
 
 	addrs := []net.Addr{
@@ -39,7 +39,7 @@ func Test_chooseAddr(t *testing.T) {
 		name  string
 		addrs []net.Addr
 		addr  Addr
-		ip    net.IP
+		ip    netip.Addr
 		ok    bool
 	}{
 		{
@@ -60,35 +60,35 @@ func Test_chooseAddr(t *testing.T) {
 		},
 		{
 			name: "ok, unspecified",
-			ip:   net.IPv6unspecified,
+			ip:   netip.IPv6Unspecified(),
 			addr: Unspecified,
 			ok:   true,
 		},
 		{
 			name:  "ok, GUA",
 			addrs: addrs,
-			ip:    gua,
+			ip:    netip.MustParseAddr("2001:db8::1"),
 			addr:  Global,
 			ok:    true,
 		},
 		{
 			name:  "ok, ULA",
 			addrs: addrs,
-			ip:    ula,
+			ip:    netip.MustParseAddr("fc00::1"),
 			addr:  UniqueLocal,
 			ok:    true,
 		},
 		{
 			name:  "ok, LLA",
 			addrs: addrs,
-			ip:    lla,
+			ip:    netip.MustParseAddr("fe80::1"),
 			addr:  LinkLocal,
 			ok:    true,
 		},
 		{
 			name:  "ok, arbitrary",
 			addrs: addrs,
-			ip:    ip6,
+			ip:    netip.MustParseAddr("2001:db8::1000"),
 			addr:  Addr(ip6.String()),
 			ok:    true,
 		},
@@ -109,14 +109,20 @@ func Test_chooseAddr(t *testing.T) {
 				return
 			}
 
-			ttipa := &net.IPAddr{
-				IP:   tt.ip,
-				Zone: zone,
-			}
-
-			if diff := cmp.Diff(ttipa, ipa); diff != "" {
+			ttipa := tt.ip.WithZone(zone)
+			if diff := cmp.Diff(ttipa, ipa, cmp.Comparer(addrEqual)); diff != "" {
 				t.Fatalf("unexpected IPv6 address (-want +got):\n%s", diff)
 			}
 		})
 	}
+}
+
+// MustIPv6 parses s as a valid IPv6 address, or it panics.
+func mustIPv6(s string) net.IP {
+	ip := net.ParseIP(s)
+	if ip == nil || ip.To4() != nil {
+		panicf("invalid IPv6 address: %q", s)
+	}
+
+	return ip
 }

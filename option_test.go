@@ -5,6 +5,7 @@ package ndp
 
 import (
 	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -96,7 +97,7 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 						t.Fatalf("failed to unmarshal options: %v", err)
 					}
 
-					if diff := cmp.Diff(st.os, got); diff != "" {
+					if diff := cmp.Diff(st.os, got, cmp.Comparer(addrEqual)); diff != "" {
 						t.Fatalf("unexpected options (-want +got):\n%s", diff)
 					}
 				})
@@ -296,7 +297,8 @@ func TestOptionUnmarshalError(t *testing.T) {
 						// Lifetime.
 						ndptest.Zero(4),
 						// Length misleading.
-						{0xff}, ndptest.Zero(7),
+						{0xff},
+						ndptest.Zero(7),
 					},
 				},
 				{
@@ -308,7 +310,8 @@ func TestOptionUnmarshalError(t *testing.T) {
 						// Lifetime.
 						ndptest.Zero(4),
 						// Length leaves no room for null terminator.
-						{7}, ndptest.Zero(7),
+						{7},
+						ndptest.Zero(7),
 					},
 				},
 				{
@@ -362,9 +365,9 @@ func TestPrefixInformationUnmarshalPrefixLength(t *testing.T) {
 	// Assume that unmarshaling ignores any prefix bits longer than the
 	// specified length.
 	var (
-		prefix = ndptest.MustIPv6("2001:db8::")
+		prefix = netip.MustParseAddr("2001:db8::")
 		l      = uint8(16)
-		want   = ndptest.MustIPv6("2001::")
+		want   = netip.MustParseAddr("2001::")
 	)
 
 	bs := [][]byte{
@@ -382,7 +385,7 @@ func TestPrefixInformationUnmarshalPrefixLength(t *testing.T) {
 		// Reserved.
 		{0x00, 0x00, 0x00, 0x00},
 		// Prefix.
-		prefix,
+		prefix.AsSlice(),
 	}
 
 	pi := new(PrefixInformation)
@@ -392,7 +395,7 @@ func TestPrefixInformationUnmarshalPrefixLength(t *testing.T) {
 
 	// Assume that unmarshaling ignores any prefix bits longer than the
 	// specified length.
-	if diff := cmp.Diff(want, pi.Prefix); diff != "" {
+	if diff := cmp.Diff(want, pi.Prefix, cmp.Comparer(addrEqual)); diff != "" {
 		t.Fatalf("unexpected prefix (-want +got):\n%s", diff)
 	}
 }
@@ -401,7 +404,7 @@ func TestRouteInformationUnmarshalPrefixLength(t *testing.T) {
 	// This route prefix easily fits in 2 bytes, but this test will also verify
 	// it can be decoded from 3 bytes due to device behaviors seen in the wild.
 	var (
-		prefix       = ndptest.MustIPv6("2001:db8::")
+		prefix       = netip.MustParseAddr("2001:db8::")
 		mask   uint8 = 64
 	)
 
@@ -436,7 +439,7 @@ func TestRouteInformationUnmarshalPrefixLength(t *testing.T) {
 				// Route lifetime.
 				ndptest.Zero(4),
 				// Prefix, possibly in a shortened form.
-				prefix[:tt.idx],
+				prefix.AsSlice()[:tt.idx],
 			}
 
 			ri := new(RouteInformation)
@@ -449,7 +452,7 @@ func TestRouteInformationUnmarshalPrefixLength(t *testing.T) {
 				Prefix:       prefix,
 			}
 
-			if diff := cmp.Diff(want, ri); diff != "" {
+			if diff := cmp.Diff(want, ri, cmp.Comparer(addrEqual)); diff != "" {
 				t.Fatalf("unexpected route information (-want +got):\n%s", diff)
 			}
 		})
@@ -545,7 +548,7 @@ func piTests() []optionSub {
 				// Reserved.
 				{0x00, 0x00, 0x00, 0x00},
 				// Prefix.
-				ndptest.Prefix,
+				ndptest.Prefix.AsSlice(),
 			},
 			ok: true,
 		},
@@ -580,7 +583,7 @@ func riTests() []optionSub {
 					PrefixLength:  0,
 					Preference:    High,
 					RouteLifetime: Infinity,
-					Prefix:        net.IPv6zero,
+					Prefix:        netip.IPv6Unspecified(),
 				},
 			},
 			bs: [][]byte{
@@ -678,8 +681,10 @@ func roTests() []optionSub {
 }
 
 func rdnssTests() []optionSub {
-	first := net.ParseIP("2001:db8::1")
-	second := net.ParseIP("2001:db8::2")
+	var (
+		first  = netip.MustParseAddr("2001:db8::1")
+		second = netip.MustParseAddr("2001:db8::2")
+	)
 
 	return []optionSub{
 		{
@@ -695,16 +700,14 @@ func rdnssTests() []optionSub {
 			os: []Option{
 				&RecursiveDNSServer{
 					Lifetime: 1 * time.Hour,
-					Servers: []net.IP{
-						first,
-					},
+					Servers:  []netip.Addr{first},
 				},
 			},
 			bs: [][]byte{
 				{25, 3},
 				{0x00, 0x00},
 				{0x00, 0x00, 0x0e, 0x10},
-				first,
+				first.AsSlice(),
 			},
 			ok: true,
 		},
@@ -713,18 +716,15 @@ func rdnssTests() []optionSub {
 			os: []Option{
 				&RecursiveDNSServer{
 					Lifetime: 24 * time.Hour,
-					Servers: []net.IP{
-						first,
-						second,
-					},
+					Servers:  []netip.Addr{first, second},
 				},
 			},
 			bs: [][]byte{
 				{25, 5},
 				{0x00, 0x00},
 				{0x00, 0x01, 0x51, 0x80},
-				first,
-				second,
+				first.AsSlice(),
+				second.AsSlice(),
 			},
 			ok: true,
 		},
@@ -756,8 +756,10 @@ func dnsslTests() []optionSub {
 				// Lifetime.
 				{0x00, 0x00, 0x0e, 0x10},
 				// Labels.
-				{7}, []byte("example"),
-				{3}, []byte("com"),
+				{7},
+				[]byte("example"),
+				{3},
+				[]byte("com"),
 				{0x00},
 				// Padding.
 				ndptest.Zero(3),
@@ -783,17 +785,26 @@ func dnsslTests() []optionSub {
 				// Lifetime.
 				{0x00, 0x00, 0x0e, 0x10},
 				// Labels.
-				{7}, []byte("example"),
-				{3}, []byte("com"),
+				{7},
+				[]byte("example"),
+				{3},
+				[]byte("com"),
 				{0x00},
-				{3}, []byte("foo"),
-				{7}, []byte("example"),
-				{3}, []byte("com"),
+				{3},
+				[]byte("foo"),
+				{7},
+				[]byte("example"),
+				{3},
+				[]byte("com"),
 				{0x00},
-				{3}, []byte("bar"),
-				{3}, []byte("foo"),
-				{7}, []byte("example"),
-				{3}, []byte("com"),
+				{3},
+				[]byte("bar"),
+				{3},
+				[]byte("foo"),
+				{7},
+				[]byte("example"),
+				{3},
+				[]byte("com"),
 				{0x00},
 				// Padding.
 				ndptest.Zero(5),
@@ -815,9 +826,12 @@ func dnsslTests() []optionSub {
 				// Lifetime.
 				{0x00, 0x00, 0x0e, 0x10},
 				// Labels.
-				{8}, []byte("xn--h28h"),
-				{7}, []byte("example"),
-				{3}, []byte("com"),
+				{8},
+				[]byte("xn--h28h"),
+				{7},
+				[]byte("example"),
+				{3},
+				[]byte("com"),
 				{0x00},
 				// Padding.
 				ndptest.Zero(2),

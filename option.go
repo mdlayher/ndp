@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 	"unicode"
@@ -166,7 +167,7 @@ type PrefixInformation struct {
 	AutonomousAddressConfiguration bool
 	ValidLifetime                  time.Duration
 	PreferredLifetime              time.Duration
-	Prefix                         net.IP
+	Prefix                         netip.Addr
 }
 
 // Code implements Option.
@@ -179,9 +180,10 @@ func (pi *PrefixInformation) marshal() ([]byte, error) {
 	//
 	// Therefore, any prefix, when masked with its specified length, should be
 	// identical to the prefix itself for it to be valid.
-	mask := net.CIDRMask(int(pi.PrefixLength), 128)
-	if masked := pi.Prefix.Mask(mask); !pi.Prefix.Equal(masked) {
-		return nil, fmt.Errorf("ndp: invalid prefix information: %s/%d", pi.Prefix.String(), pi.PrefixLength)
+	p := netip.PrefixFrom(pi.Prefix, int(pi.PrefixLength))
+	if masked := p.Masked(); pi.Prefix != masked.Addr() {
+		return nil, fmt.Errorf("ndp: invalid prefix information: %s/%d",
+			pi.Prefix, pi.PrefixLength)
 	}
 
 	raw := &RawOption{
@@ -208,7 +210,7 @@ func (pi *PrefixInformation) marshal() ([]byte, error) {
 
 	// 4 bytes reserved.
 
-	copy(raw.Value[14:30], pi.Prefix)
+	copy(raw.Value[14:30], pi.Prefix.AsSlice())
 
 	return raw.marshal()
 }
@@ -232,26 +234,28 @@ func (pi *PrefixInformation) unmarshal(b []byte) error {
 		preferred = time.Duration(binary.BigEndian.Uint32(raw.Value[6:10])) * time.Second
 	)
 
-	// Skip reserved area.
-	addr := net.IP(raw.Value[14:30])
-	if err := checkIPv6(addr); err != nil {
+	// Skip to address.
+	addr := raw.Value[14:30]
+	ip, ok := netip.AddrFromSlice(addr)
+	if !ok {
+		panicf("ndp: invalid IPv6 address slice: %v", addr)
+	}
+	if err := checkIPv6(ip); err != nil {
 		return err
 	}
 
 	// Per the RFC, bits in prefix past prefix length are ignored by the
 	// receiver.
-	l := raw.Value[0]
-	mask := net.CIDRMask(int(l), 128)
-	addr = addr.Mask(mask)
+	pl := raw.Value[0]
+	p := netip.PrefixFrom(ip, int(pl)).Masked()
 
 	*pi = PrefixInformation{
-		PrefixLength:                   l,
+		PrefixLength:                   pl,
 		OnLink:                         oFlag,
 		AutonomousAddressConfiguration: aFlag,
 		ValidLifetime:                  valid,
 		PreferredLifetime:              preferred,
-		// raw.Value is already a copy of b, so just point to the address.
-		Prefix: addr,
+		Prefix:                         p.Addr(),
 	}
 
 	return nil
@@ -265,7 +269,7 @@ type RouteInformation struct {
 	PrefixLength  uint8
 	Preference    Preference
 	RouteLifetime time.Duration
-	Prefix        net.IP
+	Prefix        netip.Addr
 }
 
 // Code implements Option.
@@ -279,8 +283,8 @@ func (ri *RouteInformation) marshal() ([]byte, error) {
 	// Therefore, any prefix, when masked with its specified length, should be
 	// identical to the prefix itself for it to be valid.
 	err := fmt.Errorf("ndp: invalid route information: %s/%d", ri.Prefix.String(), ri.PrefixLength)
-	mask := net.CIDRMask(int(ri.PrefixLength), 128)
-	if masked := ri.Prefix.Mask(mask); !ri.Prefix.Equal(masked) {
+	p := netip.PrefixFrom(ri.Prefix, int(ri.PrefixLength))
+	if masked := p.Masked(); ri.Prefix != masked.Addr() {
 		return nil, err
 	}
 
@@ -317,7 +321,7 @@ func (ri *RouteInformation) marshal() ([]byte, error) {
 	lt := ri.RouteLifetime.Seconds()
 	binary.BigEndian.PutUint32(raw.Value[2:6], uint32(lt))
 
-	copy(raw.Value[6:], ri.Prefix)
+	copy(raw.Value[6:], ri.Prefix.AsSlice())
 
 	return raw.marshal()
 }
@@ -331,25 +335,25 @@ func (ri *RouteInformation) unmarshal(b []byte) error {
 	// Verify the option's length against prefix length using the rules defined
 	// in the RFC.
 	l := raw.Value[0]
-	err := fmt.Errorf("ndp: invalid route information for /%d prefix", l)
+	rerr := fmt.Errorf("ndp: invalid route information for /%d prefix", l)
 
 	switch {
 	case l == 0:
 		if raw.Length < 1 || raw.Length > 3 {
-			return err
+			return rerr
 		}
 	case l > 0 && l < 65:
 		// Some devices will use length 3 anyway for a route that fits in /64.
 		if raw.Length != 2 && raw.Length != 3 {
-			return err
+			return rerr
 		}
 	case l > 64 && l < 129:
 		if raw.Length != 3 {
-			return err
+			return rerr
 		}
 	default:
 		// Invalid IPv6 prefix.
-		return err
+		return rerr
 	}
 
 	// Unpack preference (with adjacent reserved bits) and lifetime values.
@@ -362,15 +366,20 @@ func (ri *RouteInformation) unmarshal(b []byte) error {
 		return err
 	}
 
+	// Take up to the specified number of IP bytes into the prefix.
+	var (
+		addr [16]byte
+		buf  = raw.Value[6 : 6+(l/8)]
+	)
+
+	copy(addr[:], buf)
+
 	*ri = RouteInformation{
 		PrefixLength:  l,
 		Preference:    pref,
 		RouteLifetime: lt,
-		Prefix:        make(net.IP, net.IPv6len),
+		Prefix:        netip.AddrFrom16(addr),
 	}
-
-	// Copy up to the specified number of IP bytes into the prefix.
-	copy(ri.Prefix, raw.Value[6:6+(l/8)])
 
 	return nil
 }
@@ -379,7 +388,7 @@ func (ri *RouteInformation) unmarshal(b []byte) error {
 // RFC 8106, Section 5.1.
 type RecursiveDNSServer struct {
 	Lifetime time.Duration
-	Servers  []net.IP
+	Servers  []netip.Addr
 }
 
 // Code implements Option.
@@ -424,7 +433,7 @@ func (r *RecursiveDNSServer) marshal() ([]byte, error) {
 			end   = rdnssServersOff + net.IPv6len + (i * net.IPv6len)
 		)
 
-		copy(raw.Value[start:end], r.Servers[i])
+		copy(raw.Value[start:end], r.Servers[i].AsSlice())
 	}
 
 	return raw.marshal()
@@ -457,7 +466,7 @@ func (r *RecursiveDNSServer) unmarshal(b []byte) error {
 		return errRDNSSNoServers
 	}
 
-	servers := make([]net.IP, 0, count)
+	servers := make([]netip.Addr, 0, count)
 	for i := 0; i < count; i++ {
 		// Determine the start and end byte offsets for each address,
 		// effectively iterating 16 bytes at a time to fetch an address.
@@ -466,9 +475,12 @@ func (r *RecursiveDNSServer) unmarshal(b []byte) error {
 			end   = rdnssServersOff + net.IPv6len + (i * net.IPv6len)
 		)
 
-		// The RawOption already made a copy of this data, so convert it
-		// directly to an IPv6 address with no further copying needed.
-		servers = append(servers, net.IP(raw.Value[start:end]))
+		s, ok := netip.AddrFromSlice(raw.Value[start:end])
+		if !ok {
+			return errRDNSSBadServer
+		}
+
+		servers = append(servers, s)
 	}
 
 	*r = RecursiveDNSServer{
