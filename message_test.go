@@ -2,7 +2,7 @@ package ndp_test
 
 import (
 	"errors"
-	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -75,7 +75,7 @@ func TestMarshalParseMessage(t *testing.T) {
 						t.Fatalf("failed to unmarshal message: %v", err)
 					}
 
-					if diff := cmp.Diff(st.m, m); diff != "" {
+					if diff := cmp.Diff(st.m, m, cmp.Comparer(addrEqual)); diff != "" {
 						t.Fatalf("unexpected message (-want +got):\n%s", diff)
 					}
 				})
@@ -125,7 +125,7 @@ func TestParseMessageError(t *testing.T) {
 					name: "IPv4",
 					bs: [][]byte{
 						{0xe0, 0x00, 0x00, 0x00},
-						net.IPv4(192, 168, 1, 1),
+						netip.IPv4Unspecified().AsSlice(),
 					},
 				},
 			},
@@ -142,7 +142,7 @@ func TestParseMessageError(t *testing.T) {
 					name: "bad, IPv4",
 					bs: [][]byte{
 						{0xe0, 0x00, 0x00, 0x00},
-						net.IPv4(192, 168, 1, 1),
+						netip.IPv4Unspecified().AsSlice(),
 					},
 				},
 			},
@@ -192,51 +192,48 @@ func TestParseMessageError(t *testing.T) {
 }
 
 func TestMarshalMessageChecksum(t *testing.T) {
-	source := net.ParseIP("2001:db8::10")
-	destination := net.ParseIP("2001:db8::1")
-	mac, err := net.ParseMAC("86:31:82:05:ce:9a")
-	if err != nil {
-		t.Fatalf("Failed to parse hard-coded mac address in test: %v", err)
-	}
+	var (
+		source      = netip.MustParseAddr("2001:db8::10")
+		destination = netip.MustParseAddr("2001:db8::1")
+	)
+
 	message := &ndp.NeighborAdvertisement{
 		Solicited:     true,
 		Override:      true,
 		TargetAddress: source,
 		Options: []ndp.Option{&ndp.LinkLayerAddress{
 			Direction: ndp.Target,
-			Addr:      mac,
+			Addr:      ndptest.MAC,
 		}},
 	}
+
 	buf, err := ndp.MarshalMessageChecksum(message, source, destination)
 	if err != nil {
-		t.Fatalf("Failed to marshal message: %v", err)
+		t.Fatalf("failed to marshal message with checksum: %v", err)
 	}
-	// NOTE: Checksum is in the 3rd and 4th bytes in the message
-	if diff := cmp.Diff(buf[2:4], []uint8{0xb5, 0x85}); diff != "" {
-		t.Fatalf("unexpected checksum (-want +got):\n%s", diff)
+
+	// Checksum is in bytes 3 and 4.
+	if diff := cmp.Diff(buf[2:4], []uint8{0x10, 0x0c}); diff != "" {
+		t.Fatalf("unexpected set checksum (-want +got):\n%s", diff)
 	}
-	// Check that MarshalMessage has a 0 checksum
+
+	// Check that MarshalMessage has a 0 checksum.
 	buf, err = ndp.MarshalMessage(message)
 	if err != nil {
-		t.Fatalf("Failed to marshal message: %v", err)
+		t.Fatalf("failed to marshal message: %v", err)
 	}
+
 	if diff := cmp.Diff(buf[2:4], []uint8{0, 0}); diff != "" {
-		t.Fatalf("unexpected checksum (-want +got):\n%s", diff)
+		t.Fatalf("unexpected unset checksum (-want +got):\n%s", diff)
 	}
 }
 
 func naTests() []messageSub {
 	return []messageSub{
 		{
-			name: "bad, malformed IP address",
-			m: &ndp.NeighborAdvertisement{
-				TargetAddress: net.IP{192, 168, 1, 1, 0, 0},
-			},
-		},
-		{
 			name: "bad, IPv4 address",
 			m: &ndp.NeighborAdvertisement{
-				TargetAddress: net.IPv4(192, 168, 1, 1),
+				TargetAddress: netip.IPv4Unspecified(),
 			},
 		},
 		{
@@ -246,7 +243,7 @@ func naTests() []messageSub {
 			},
 			bs: [][]byte{
 				{0x00, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 			},
 			ok: true,
 		},
@@ -258,7 +255,7 @@ func naTests() []messageSub {
 			},
 			bs: [][]byte{
 				{0x80, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 			},
 			ok: true,
 		},
@@ -270,7 +267,7 @@ func naTests() []messageSub {
 			},
 			bs: [][]byte{
 				{0x40, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 			},
 			ok: true,
 		},
@@ -282,7 +279,7 @@ func naTests() []messageSub {
 			},
 			bs: [][]byte{
 				{0x20, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 			},
 			ok: true,
 		},
@@ -296,7 +293,7 @@ func naTests() []messageSub {
 			},
 			bs: [][]byte{
 				{0xe0, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 			},
 			ok: true,
 		},
@@ -317,7 +314,7 @@ func naTests() []messageSub {
 			bs: [][]byte{
 				// NA message.
 				{0xe0, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 				// Target LLA option.
 				{0x02, 0x01},
 				ndptest.MAC,
@@ -330,15 +327,9 @@ func naTests() []messageSub {
 func nsTests() []messageSub {
 	return []messageSub{
 		{
-			name: "bad, malformed IP address",
-			m: &ndp.NeighborSolicitation{
-				TargetAddress: net.IP{192, 168, 1, 1, 0, 0},
-			},
-		},
-		{
 			name: "bad, IPv4 address",
 			m: &ndp.NeighborSolicitation{
-				TargetAddress: net.IPv4(192, 168, 1, 1),
+				TargetAddress: netip.IPv4Unspecified(),
 			},
 		},
 		{
@@ -348,7 +339,7 @@ func nsTests() []messageSub {
 			},
 			bs: [][]byte{
 				{0x00, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 			},
 			ok: true,
 		},
@@ -366,7 +357,7 @@ func nsTests() []messageSub {
 			bs: [][]byte{
 				// NS message.
 				{0x00, 0x00, 0x00, 0x00},
-				ndptest.IP,
+				ndptest.IP.AsSlice(),
 				// Source LLA option.
 				{0x01, 0x01},
 				ndptest.MAC,
@@ -491,3 +482,5 @@ func rsTests() []messageSub {
 		},
 	}
 }
+
+func addrEqual(x, y netip.Addr) bool { return x == y }

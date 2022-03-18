@@ -4,18 +4,18 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/mdlayher/ndp/internal/ndptest"
 )
 
 func TestConn(t *testing.T) {
 	tests := []struct {
 		name string
-		fn   func(t *testing.T, c1, c2 *Conn, addr net.IP)
+		fn   func(t *testing.T, c1, c2 *Conn, addr netip.Addr)
 	}{
 		{
 			name: "echo",
@@ -29,12 +29,13 @@ func TestConn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			withConns(t, tt.fn)
+			c1, c2, addr := testICMPConn(t)
+			tt.fn(t, c1, c2, addr)
 		})
 	}
 }
 
-func testConnEcho(t *testing.T, c1, c2 *Conn, addr net.IP) {
+func testConnEcho(t *testing.T, c1, c2 *Conn, addr netip.Addr) {
 	// Echo this message between two connections.
 	rs := &RouterSolicitation{}
 
@@ -71,7 +72,7 @@ func testConnEcho(t *testing.T, c1, c2 *Conn, addr net.IP) {
 	}
 }
 
-func testConnFilterInvalid(t *testing.T, c1, c2 *Conn, addr net.IP) {
+func testConnFilterInvalid(t *testing.T, c1, c2 *Conn, addr netip.Addr) {
 	// Echo this message between two connections.
 	rs := &RouterSolicitation{}
 
@@ -145,54 +146,27 @@ func testConnFilterInvalid(t *testing.T, c1, c2 *Conn, addr net.IP) {
 	}
 }
 
-// withConns invokes fn once with a UDPv6 connection and again with an ICMPv6
-// connection, enabling testing with both privileged and unprivileged sockets.
-func withConns(t *testing.T, fn func(t *testing.T, c1, c2 *Conn, addr net.IP)) {
-	var name string
-	var newConn func(t *testing.T) (*Conn, *Conn, net.IP, func())
-
-	for i := 0; i < 2; i++ {
-		switch i {
-		case 0:
-			name = "UDP"
-			newConn = testUDPConn
-		case 1:
-			name = "ICMP"
-			newConn = testICMPConn
-		default:
-			t.Fatalf("unhandled withConns iteration: %d", i)
-		}
-
-		t.Run(name, func(t *testing.T) {
-			c1, c2, addr, done := newConn(t)
-			defer done()
-
-			fn(t, c1, c2, addr)
-		})
-	}
-}
-
 func TestSolicitedNodeMulticast(t *testing.T) {
 	tests := []struct {
 		name string
-		ip   net.IP
-		snm  net.IP
+		ip   netip.Addr
+		snm  netip.Addr
 		ok   bool
 	}{
 		{
 			name: "bad, IPv4",
-			ip:   net.IPv4(192, 168, 1, 1),
+			ip:   netip.MustParseAddr("192.168.1.1"),
 		},
 		{
 			name: "ok, link-local",
-			ip:   ndptest.MustIPv6("fe80::1234:5678"),
-			snm:  ndptest.MustIPv6("ff02::1:ff34:5678"),
+			ip:   netip.MustParseAddr("fe80::1234:5678"),
+			snm:  netip.MustParseAddr("ff02::1:ff34:5678"),
 			ok:   true,
 		},
 		{
 			name: "ok, global",
-			ip:   ndptest.MustIPv6("2001:db8::dead:beef"),
-			snm:  ndptest.MustIPv6("ff02::1:ffad:beef"),
+			ip:   netip.MustParseAddr("2001:db8::dead:beef"),
+			snm:  netip.MustParseAddr("ff02::1:ffad:beef"),
 			ok:   true,
 		},
 	}
@@ -212,9 +186,11 @@ func TestSolicitedNodeMulticast(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.snm, snm); diff != "" {
+			if diff := cmp.Diff(tt.snm, snm, cmp.Comparer(addrEqual)); diff != "" {
 				t.Fatalf("unexpected solicited-node multicast address (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
+
+func addrEqual(x, y netip.Addr) bool { return x == y }

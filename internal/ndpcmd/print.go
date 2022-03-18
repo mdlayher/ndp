@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
+	"net/netip"
 	"strings"
 
 	"github.com/mdlayher/ndp"
 )
 
-func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
+func printMessage(ll *log.Logger, m ndp.Message, from netip.Addr) {
 	switch m := m.(type) {
 	case *ndp.NeighborAdvertisement:
 		printNA(ll, m, from)
@@ -25,7 +25,7 @@ func printMessage(ll *log.Logger, m ndp.Message, from net.IP) {
 	}
 }
 
-func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
+func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from netip.Addr) {
 	var flags []string
 	if ra.ManagedConfiguration {
 		flags = append(flags, "managed")
@@ -67,7 +67,7 @@ func printRA(ll *log.Logger, ra *ndp.RouterAdvertisement, from net.IP) {
 	ll.Print(s.String())
 }
 
-func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from net.IP) {
+func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from netip.Addr) {
 	s := fmt.Sprintf(
 		rsFormat,
 		from.String(),
@@ -78,7 +78,7 @@ func printRS(ll *log.Logger, rs *ndp.RouterSolicitation, from net.IP) {
 
 const rsFormat = "router solicitation from %s:\n"
 
-func printNA(ll *log.Logger, na *ndp.NeighborAdvertisement, from net.IP) {
+func printNA(ll *log.Logger, na *ndp.NeighborAdvertisement, from netip.Addr) {
 	s := fmt.Sprintf(
 		naFormat,
 		from.String(),
@@ -98,7 +98,7 @@ const naFormat = `neighbor advertisement from %s:
   - target address: %s
 `
 
-func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from net.IP) {
+func printNS(ll *log.Logger, ns *ndp.NeighborSolicitation, from netip.Addr) {
 	s := fmt.Sprintf(
 		nsFormat,
 		from.String(),
@@ -180,6 +180,6 @@ func optStr(o ndp.Option) string {
 	}
 }
 
-func writef(sw io.StringWriter, format string, a ...interface{}) {
+func writef(sw io.StringWriter, format string, a ...any) {
 	_, _ = sw.WriteString(fmt.Sprintf(format, a...))
 }

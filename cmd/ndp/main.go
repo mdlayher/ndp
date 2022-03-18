@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 
@@ -46,21 +47,21 @@ func main() {
 	}
 	defer c.Close()
 
-	var target net.IP
+	var target netip.Addr
 	if t := *targetFlag; t != "" {
-		target = net.ParseIP(t)
-		if target == nil {
-			ll.Fatalf("failed to parse IPv6 address %q", t)
+		target, err = netip.ParseAddr(t)
+		if err != nil {
+			ll.Fatalf("failed to parse IPv6 target address: %v", err)
 		}
 	}
 
-	var prefix net.IP
+	var prefix netip.Addr
 	if p := *prefixFlag; p != "" {
-		prefix = net.ParseIP(p)
-		if prefix == nil {
-			ll.Fatalf("failed to parse IPv6 address %q", p)
+		prefix, err = netip.ParseAddr(p)
+		if err != nil {
+			ll.Fatalf("failed to parse IPv6 prefix address: %v", err)
 		}
-		if !prefix.Equal(prefix.Mask(net.CIDRMask(64, 128))) {
+		if prefix != netip.PrefixFrom(prefix, 64).Masked().Addr() {
 			ll.Fatalf("prefix must be a valid /64, got: %q", p)
 		}
 	}
@@ -133,9 +134,13 @@ func findInterface(name string) (*net.Interface, error) {
 			if !ok {
 				continue
 			}
+			ip, ok := netip.AddrFromSlice(ipNet.IP)
+			if !ok {
+				panicf("failed to parse IPv6 address: %q", ipNet.IP)
+			}
 
 			// Is this address an IPv6 address?
-			if ipNet.IP.To16() != nil && ipNet.IP.To4() == nil {
+			if ip.Is6() && !ip.Is4In6() {
 				return &ifi, nil
 			}
 		}
@@ -161,5 +166,8 @@ Examples:
   Send neighbor solicitations on interface eth0 to a neighbor's link-local
   address until a neighbor advertisement is received.
 
-    $ sudo ndp -i eth0 -a linklocal -t fe80::1 ns
-`
+    $ sudo ndp -i eth0 -a linklocal -t fe80::1 ns`
+
+func panicf(format string, a ...any) {
+	panic(fmt.Sprintf(format, a...))
+}

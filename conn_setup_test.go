@@ -1,50 +1,41 @@
 package ndp
 
 import (
-	"fmt"
+	"errors"
 	"net"
+	"net/netip"
 	"os"
 	"testing"
 )
 
-func testICMPConn(t *testing.T) (*Conn, *Conn, net.IP, func()) {
+func testICMPConn(t *testing.T) (*Conn, *Conn, netip.Addr) {
+	t.Helper()
+
 	ifi := testInterface(t)
 
 	// Create two ICMPv6 connections that will communicate with each other.
 	c1, addr := icmpConn(t, ifi)
 	c2, _ := icmpConn(t, ifi)
 
-	return c1, c2, addr, func() {
+	t.Cleanup(func() {
 		_ = c1.Close()
 		_ = c2.Close()
-	}
+	})
+
+	return c1, c2, addr
 }
 
-func testUDPConn(t *testing.T) (*Conn, *Conn, net.IP, func()) {
-	ifi := testInterface(t)
+func icmpConn(t *testing.T, ifi *net.Interface) (*Conn, netip.Addr) {
+	t.Helper()
 
-	c1, c2, ip, err := TestConns(ifi)
-	if err != nil {
-		// TODO(mdlayher): remove when travis can do IPv6.
-		t.Skipf("failed to create test connections, skipping test: %v", err)
-	}
-
-	return c1, c2, ip, func() {
-		_ = c1.Close()
-		_ = c2.Close()
-	}
-}
-
-func icmpConn(t *testing.T, ifi *net.Interface) (*Conn, net.IP) {
 	// Wire up a standard ICMPv6 NDP connection.
 	c, addr, err := Listen(ifi, LinkLocal)
 	if err != nil {
-		oerr, ok := err.(*net.OpError)
-		if !ok && (ok && !os.IsPermission(err)) {
+		if !errors.Is(err, os.ErrPermission) {
 			t.Fatalf("failed to dial NDP: %v", err)
 		}
 
-		t.Skipf("permission denied, cannot test ICMPv6 NDP: %v", oerr)
+		t.Skipf("skipping, permission denied, cannot test ICMPv6 NDP: %v", err)
 	}
 	c.icmpTest = true
 
@@ -76,18 +67,18 @@ func testInterface(t *testing.T) *net.Interface {
 			if !ok {
 				continue
 			}
+			ip, ok := netip.AddrFromSlice(ipNet.IP)
+			if !ok {
+				t.Fatalf("failed to parse IPv6 address: %v", ipNet.IP)
+			}
 
 			// Is this address an IPv6 address?
-			if ipNet.IP.To16() != nil && ipNet.IP.To4() == nil {
+			if ip.Is6() && !ip.Is4In6() {
 				return &ifi
 			}
 		}
 	}
 
-	t.Skip("could not find a usable IPv6-enabled interface")
+	t.Skip("skipping, could not find a usable IPv6-enabled interface")
 	return nil
-}
-
-func panicf(format string, a ...interface{}) {
-	panic(fmt.Sprintf(format, a...))
 }
