@@ -2,10 +2,12 @@ package ndp
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/netip"
 	"net/url"
@@ -34,6 +36,7 @@ const (
 	optTargetLLA         = 2
 	optPrefixInformation = 3
 	optMTU               = 5
+	optNonce             = 14
 	optRouteInformation  = 24
 	optRDNSS             = 25
 	optDNSSL             = 31
@@ -699,7 +702,7 @@ func NewCaptivePortal(uri string) (*CaptivePortal, error) {
 }
 
 // Code implements Option.
-func (CaptivePortal) Code() byte { return optCaptivePortal }
+func (*CaptivePortal) Code() byte { return optCaptivePortal }
 
 func (cp *CaptivePortal) marshal() ([]byte, error) {
 	if len(cp.URI) == 0 {
@@ -746,6 +749,63 @@ func (cp *CaptivePortal) unmarshal(b []byte) error {
 	// for parsing, since we likely have to interop with other implementations.
 	*cp = CaptivePortal{URI: string(raw.Value[:i])}
 
+	return nil
+}
+
+// A Nonce is a Nonce option, as described in RFC 3971, Section 5.3.2.
+type Nonce struct {
+	b []byte
+}
+
+// NewNonce creates a Nonce option with an opaque random value.
+func NewNonce() *Nonce {
+	// Minimum is 6 bytes but the final length of the message must be a multiple
+	// of 8 bytes, so we'll go with 14 for now and re-evaluate later.
+	const n = 14
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+
+	return &Nonce{b: b}
+}
+
+// Equal reports whether n and x are the same nonce.
+func (n *Nonce) Equal(x *Nonce) bool { return subtle.ConstantTimeCompare(n.b, x.b) == 1 }
+
+// Code implements Option.
+func (*Nonce) Code() byte { return optNonce }
+
+func (n *Nonce) marshal() ([]byte, error) {
+	if len(n.b) == 0 {
+		return nil, errors.New("ndp: nonce option requires a non-empty nonce value")
+	}
+
+	// Enforce the nonce size matches the next unit of 8 bytes including 2 bytes
+	// for code and length.
+	l := len(n.b)
+	if r := (l + 2) % 8; r != 0 {
+		return nil, errors.New("ndp: nonce size is invalid")
+	}
+
+	value := make([]byte, l)
+	copy(value, n.b)
+
+	raw := &RawOption{
+		Type:   n.Code(),
+		Length: (uint8(l) + 2) / 8,
+		Value:  value,
+	}
+
+	return raw.marshal()
+}
+
+func (n *Nonce) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	// raw already made a copy.
+	n.b = raw.Value
 	return nil
 }
 
@@ -851,6 +911,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(DNSSearchList)
 		case optCaptivePortal:
 			o = new(CaptivePortal)
+		case optNonce:
+			o = new(Nonce)
 		default:
 			o = new(RawOption)
 		}

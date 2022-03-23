@@ -39,9 +39,7 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			name: "MTU",
 			subs: []optionSub{{
 				name: "ok",
-				os: []Option{
-					NewMTU(1500),
-				},
+				os:   []Option{NewMTU(1500)},
 				bs: [][]byte{
 					{0x05, 0x01, 0x00, 0x00},
 					{0x00, 0x00, 0x05, 0xdc},
@@ -68,6 +66,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 		{
 			name: "captive portal",
 			subs: cpTests(),
+		},
+		{
+			name: "nonce",
+			subs: nonceTests(),
 		},
 	}
 
@@ -933,6 +935,41 @@ func cpTests() []optionSub {
 			os:   []Option{mustCaptivePortal("")},
 			bs:   urnBytes,
 			ok:   true,
+		},
+	}
+}
+
+func nonceTests() []optionSub {
+	nonce := NewNonce()
+
+	return []optionSub{
+		{
+			name: "bad, empty",
+			os:   []Option{&Nonce{}},
+		},
+		{
+			name: "bad, unaligned",
+			os:   []Option{&Nonce{b: []byte{0xff}}},
+		},
+		{
+			name: "ok, minimum length",
+			os:   []Option{&Nonce{b: make([]byte, 6)}},
+			bs: [][]byte{
+				{14, 1},
+				// Nonce.
+				ndptest.Zero(6),
+			},
+			ok: true,
+		},
+		{
+			name: "ok, random",
+			os:   []Option{nonce},
+			bs: [][]byte{
+				{14, 2},
+				// Nonce.
+				nonce.b,
+			},
+			ok: true,
 		},
 	}
 }
