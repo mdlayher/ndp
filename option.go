@@ -672,7 +672,7 @@ func NewCaptivePortal(uri string) (*CaptivePortal, error) {
 
 	// Try to comply with the max limit for DHCPv4.
 	if len(uri) > 255 {
-		return nil, errors.New("ndp: Captive-Portal option URI is too long")
+		return nil, errors.New("ndp: captive portal option URI is too long")
 	}
 
 	// TODO(mdlayher): a URN is almost a URL, but investigate compliance with
@@ -691,7 +691,7 @@ func NewCaptivePortal(uri string) (*CaptivePortal, error) {
 	// kind of path appended.
 	for _, s := range strings.Split(urn.Path, "/") {
 		if ip, err := netip.ParseAddr(s); err == nil {
-			return nil, fmt.Errorf("ndp: Captive-Portal option URIs should not contain IP addresses: %s", ip)
+			return nil, fmt.Errorf("ndp: captive portal option URIs should not contain IP addresses: %s", ip)
 		}
 	}
 
