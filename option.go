@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -773,6 +774,9 @@ func (n *Nonce) Equal(x *Nonce) bool { return subtle.ConstantTimeCompare(n.b, x.
 
 // Code implements Option.
 func (*Nonce) Code() byte { return optNonce }
+
+// String returns the string representation of a Nonce.
+func (n *Nonce) String() string { return hex.EncodeToString(n.b) }
 
 func (n *Nonce) marshal() ([]byte, error) {
 	if len(n.b) == 0 {

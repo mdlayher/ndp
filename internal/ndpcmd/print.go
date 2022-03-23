@@ -137,7 +137,7 @@ func optStr(o ndp.Option) string {
 
 		return fmt.Sprintf("%s link-layer address: %s", dir, o.Addr.String())
 	case *ndp.MTU:
-		return fmt.Sprintf("MTU: %d", *o)
+		return fmt.Sprintf("MTU: %d", o.MTU)
 	case *ndp.PrefixInformation:
 		var flags []string
 		if o.OnLink {
@@ -174,7 +174,9 @@ func optStr(o ndp.Option) string {
 	case *ndp.DNSSearchList:
 		return fmt.Sprintf("DNS search list: lifetime: %s, domain names: %s", o.Lifetime, strings.Join(o.DomainNames, ", "))
 	case *ndp.CaptivePortal:
-		return fmt.Sprintf("captive portal: %s", *o)
+		return fmt.Sprintf("captive portal: %s", o.URI)
+	case *ndp.Nonce:
+		return fmt.Sprintf("nonce: %s", o)
 	default:
 		panic(fmt.Sprintf("unrecognized option: %v", o))
 	}
