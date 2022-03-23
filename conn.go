@@ -237,7 +237,8 @@ func SolicitedNodeMulticast(ip netip.Addr) (netip.Addr, error) {
 
 	// Fixed prefix, and low 24 bits taken from input address.
 	var (
-		snm = netip.MustParseAddr("ff02::1:ff00:0").As16()
+		// ff02::1:ff00:0/104
+		snm = [16]byte{0: 0xff, 1: 0x02, 11: 0x01, 12: 0xff}
 		ips = ip.As16()
 	)
 
