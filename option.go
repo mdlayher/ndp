@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -120,15 +121,14 @@ func (lla *LinkLayerAddress) unmarshal(b []byte) error {
 
 var _ Option = new(MTU)
 
-// TODO(mdlayher): decide if this should just be a struct type instead.
-
 // An MTU is an MTU option, as described in RFC 4861, Section 4.6.1.
-type MTU uint32
+type MTU struct {
+	MTU uint32
+}
 
 // NewMTU creates an MTU Option from an MTU value.
 func NewMTU(mtu uint32) *MTU {
-	m := MTU(mtu)
-	return &m
+	return &MTU{MTU: mtu}
 }
 
 // Code implements Option.
@@ -142,7 +142,7 @@ func (m *MTU) marshal() ([]byte, error) {
 		Value: make([]byte, 6),
 	}
 
-	binary.BigEndian.PutUint32(raw.Value[2:6], uint32(*m))
+	binary.BigEndian.PutUint32(raw.Value[2:6], uint32(m.MTU))
 
 	return raw.marshal()
 }
@@ -153,7 +153,7 @@ func (m *MTU) unmarshal(b []byte) error {
 		return err
 	}
 
-	*m = MTU(binary.BigEndian.Uint32(raw.Value[2:6]))
+	*m = MTU{MTU: binary.BigEndian.Uint32(raw.Value[2:6])}
 
 	return nil
 }
@@ -647,36 +647,74 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 	return nil
 }
 
+// Unrestricted is the IANA-assigned URI for a network with no captive portal
+// restrictions, as specified in RFC 8910, Section 2.
+const Unrestricted = "urn:ietf:params:capport:unrestricted"
+
 // A CaptivePortal is a Captive-Portal option, as described in RFC 8910, Section
 // 2.3.
-type CaptivePortal string
+type CaptivePortal struct {
+	URI string
+}
 
-// NewCaptivePortal produces a CaptivePortal Option for the input URI string.
-func NewCaptivePortal(uri string) *CaptivePortal {
-	// TODO(mdlayher): validate URI?
-	cp := CaptivePortal(uri)
-	return &cp
+// NewCaptivePortal produces a CaptivePortal Option for the input URI string. As
+// a special case, if uri is empty, Unrestricted is used as the CaptivePortal
+// OptionURI.
+//
+// If uri is an IP address literal, an error is returned. Per RFC 8910, uri
+// "SHOULD NOT" be an IP address, but there are circumstances where this
+// behavior may be useful. In that case, the caller can bypass NewCaptivePortal
+// and construct a CaptivePortal Option directly.
+func NewCaptivePortal(uri string) (*CaptivePortal, error) {
+	if uri == "" {
+		return &CaptivePortal{URI: Unrestricted}, nil
+	}
+
+	// Try to comply with the max limit for DHCPv4.
+	if len(uri) > 255 {
+		return nil, errors.New("ndp: Captive-Portal option URI is too long")
+	}
+
+	// TODO(mdlayher): a URN is almost a URL, but investigate compliance with
+	// https://datatracker.ietf.org/doc/html/rfc8141. In particular there are
+	// some tricky rules around case-sensitivity.
+	urn, err := url.Parse(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	// "The URI SHOULD NOT contain an IP address literal."
+	//
+	// Since this is a constructor and there's nothing stopping the user from
+	// manually creating this string if they so choose, we'll return an error
+	// IP addresses. This includes bare IP addresses or IP addresses with some
+	// kind of path appended.
+	for _, s := range strings.Split(urn.Path, "/") {
+		if ip, err := netip.ParseAddr(s); err == nil {
+			return nil, fmt.Errorf("ndp: Captive-Portal option URIs should not contain IP addresses: %s", ip)
+		}
+	}
+
+	return &CaptivePortal{URI: urn.String()}, nil
 }
 
 // Code implements Option.
 func (CaptivePortal) Code() byte { return optCaptivePortal }
 
 func (cp *CaptivePortal) marshal() ([]byte, error) {
-	if len(*cp) == 0 {
+	if len(cp.URI) == 0 {
 		return nil, errors.New("ndp: captive portal option requires a non-empty URI")
 	}
 
-	// TODO(mdlayher): validate URI?
-
 	// Pad up to next unit of 8 bytes including 2 bytes for code, length, and
 	// bytes for the URI string. Extra bytes will be null.
-	l := len(*cp)
+	l := len(cp.URI)
 	if r := (l + 2) % 8; r != 0 {
 		l += 8 - r
 	}
 
 	value := make([]byte, l)
-	copy(value, []byte(*cp))
+	copy(value, []byte(cp.URI))
 
 	raw := &RawOption{
 		Type:   cp.Code(),
@@ -704,7 +742,9 @@ func (cp *CaptivePortal) unmarshal(b []byte) error {
 		i = len(raw.Value)
 	}
 
-	*cp = CaptivePortal(string(raw.Value[:i]))
+	// Our constructor does validation of URIs, but we treat the URI as opaque
+	// for parsing, since we likely have to interop with other implementations.
+	*cp = CaptivePortal{URI: string(raw.Value[:i])}
 
 	return nil
 }

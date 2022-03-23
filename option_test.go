@@ -6,6 +6,7 @@ package ndp
 import (
 	"net"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -459,6 +460,48 @@ func TestRouteInformationUnmarshalPrefixLength(t *testing.T) {
 	}
 }
 
+func TestNewCaptivePortalErrors(t *testing.T) {
+	tests := []struct {
+		name, uri string
+	}{
+		{
+			name: "bad URI",
+			uri:  "%#x",
+		},
+		{
+			name: "long URI",
+			uri:  strings.Repeat("x", 256),
+		},
+		{
+			name: "IPv4",
+			uri:  "192.0.2.0",
+		},
+		{
+			name: "IPv4 path",
+			uri:  "192.0.2.0/portal",
+		},
+		{
+			name: "IPv6",
+			uri:  "2001:db8::1",
+		},
+		{
+			name: "IPv6 path",
+			uri:  "2001:db8::1/portal",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewCaptivePortal(tt.uri)
+			if err == nil {
+				t.Fatalf("expected an error for URI %q, but got none", tt.uri)
+			}
+
+			t.Logf("err: %v", err)
+		})
+	}
+}
+
 func llaTests() []optionSub {
 	return []optionSub{
 		{
@@ -842,18 +885,36 @@ func dnsslTests() []optionSub {
 }
 
 func cpTests() []optionSub {
+	var urnBytes = [][]byte{
+		{37, 5},
+		// URI.
+		[]byte(Unrestricted),
+		// Padding.
+		ndptest.Zero(2),
+	}
+
 	return []optionSub{
+		// Some of these cases are not permitted by the constructor; create them
+		// manually. The RFC says "SHOULD NOT" but not "MUST NOT".
 		{
 			name: "bad, empty",
-			os: []Option{
-				NewCaptivePortal(""),
+			os:   []Option{&CaptivePortal{URI: ""}},
+		},
+		{
+			name: "ok, IP",
+			os:   []Option{&CaptivePortal{URI: "2001:db8::1"}},
+			bs: [][]byte{
+				{37, 2},
+				// URI.
+				[]byte("2001:db8::1"),
+				// Padding.
+				ndptest.Zero(3),
 			},
+			ok: true,
 		},
 		{
 			name: "ok, no padding",
-			os: []Option{
-				NewCaptivePortal("urn:xx"),
-			},
+			os:   []Option{mustCaptivePortal("urn:xx")},
 			bs: [][]byte{
 				{37, 1},
 				// URI.
@@ -863,17 +924,25 @@ func cpTests() []optionSub {
 		},
 		{
 			name: "ok, padding",
-			os: []Option{
-				NewCaptivePortal("capport:unrestricted"),
-			},
-			bs: [][]byte{
-				{37, 3},
-				// URI.
-				{'c', 'a', 'p', 'p', 'o', 'r', 't', ':', 'u', 'n', 'r', 'e', 's', 't', 'r', 'i', 'c', 't', 'e', 'd'},
-				// Padding.
-				ndptest.Zero(2),
-			},
-			ok: true,
+			os:   []Option{mustCaptivePortal(Unrestricted)},
+			bs:   urnBytes,
+			ok:   true,
+		},
+		{
+			name: "ok, default URN",
+			os:   []Option{mustCaptivePortal("")},
+			bs:   urnBytes,
+			ok:   true,
 		},
 	}
+}
+
+func mustCaptivePortal(uri string) *CaptivePortal {
+	cp, err := NewCaptivePortal(uri)
+	if err != nil {
+		panicf("failed to parse captive portal URI: %v", err)
+	}
+
+	return cp
+
 }
