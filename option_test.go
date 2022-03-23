@@ -962,10 +962,20 @@ func nonceTests() []optionSub {
 			ok: true,
 		},
 		{
+			name: "ok, larger length",
+			os:   []Option{&Nonce{b: make([]byte, 14)}},
+			bs: [][]byte{
+				{14, 2},
+				// Nonce.
+				ndptest.Zero(14),
+			},
+			ok: true,
+		},
+		{
 			name: "ok, random",
 			os:   []Option{nonce},
 			bs: [][]byte{
-				{14, 2},
+				{14, 1},
 				// Nonce.
 				nonce.b,
 			},

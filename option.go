@@ -760,9 +760,9 @@ type Nonce struct {
 
 // NewNonce creates a Nonce option with an opaque random value.
 func NewNonce() *Nonce {
-	// Minimum is 6 bytes but the final length of the message must be a multiple
-	// of 8 bytes, so we'll go with 14 for now and re-evaluate later.
-	const n = 14
+	// Minimum is 6 bytes, and this is also the only value that the Linux kernel
+	// recognizes as of kernel 5.17.
+	const n = 6
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 
