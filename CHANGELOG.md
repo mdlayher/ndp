@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## v0.10.0
+
+- [API Change]
+  [commit](https://github.com/mdlayher/ndp/commit/0e153112a3ae254e05f4e55afdb684da0712d5c9):
+  `ndp.CaptivePortal` and `ndp.MTU` are now structs to allow for better
+  extensibility. `ndp.NewCaptivePortal` now does argument validation and returns
+  an error for various cases. `ndp.Unrestricted` is available to specify "no
+  captive portal".
+- [New API]
+  [commit](https://github.com/mdlayher/ndp/commit/7d558c930180892ed63e3213bb45bc62c71b6fa5):
+  `ndp.Nonce` implements the NDP Nonce option as described in RFC 3971. Though
+  this library does not implement Secure Neighbor Discovery (SEND) as of today,
+  this option can also be used for Enhanced Duplicate Address Detection (DAD).
+
 ## v0.9.0
 
 **This is the first release of package `ndp` that only supports Go 1.18+ due to
