@@ -887,7 +887,7 @@ func dnsslTests() []optionSub {
 }
 
 func cpTests() []optionSub {
-	var urnBytes = [][]byte{
+	urnBytes := [][]byte{
 		{37, 5},
 		// URI.
 		[]byte(Unrestricted),
@@ -991,5 +991,4 @@ func mustCaptivePortal(uri string) *CaptivePortal {
 	}
 
 	return cp
-
 }

@@ -94,25 +94,17 @@ func newConn(pc *ipv6.PacketConn, src netip.Addr, ifi *net.Interface) (*Conn, ne
 }
 
 // Close closes the Conn's underlying connection.
-func (c *Conn) Close() error {
-	return c.pc.Close()
-}
+func (c *Conn) Close() error { return c.pc.Close() }
 
 // SetDeadline sets the read and write deadlines for Conn.  It is
 // equivalent to calling both SetReadDeadline and SetWriteDeadline.
-func (c *Conn) SetDeadline(t time.Time) error {
-	return c.pc.SetDeadline(t)
-}
+func (c *Conn) SetDeadline(t time.Time) error { return c.pc.SetDeadline(t) }
 
 // SetReadDeadline sets a deadline for the next NDP message to arrive.
-func (c *Conn) SetReadDeadline(t time.Time) error {
-	return c.pc.SetReadDeadline(t)
-}
+func (c *Conn) SetReadDeadline(t time.Time) error { return c.pc.SetReadDeadline(t) }
 
 // SetWriteDeadline sets a deadline for the next NDP message to be written.
-func (c *Conn) SetWriteDeadline(t time.Time) error {
-	return c.pc.SetWriteDeadline(t)
-}
+func (c *Conn) SetWriteDeadline(t time.Time) error { return c.pc.SetWriteDeadline(t) }
 
 // JoinGroup joins the specified multicast group. If group contains an IPv6
 // zone, it is overwritten by the zone of the network interface which backs
