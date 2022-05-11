@@ -88,7 +88,7 @@ func (lla *LinkLayerAddress) marshal() ([]byte, error) {
 	}
 
 	if len(lla.Addr) != ethAddrLen {
-		return nil, fmt.Errorf("ndp: invalid link-layer address: %q", lla.Addr.String())
+		return nil, fmt.Errorf("ndp: invalid link-layer address: %q", lla.Addr)
 	}
 
 	raw := &RawOption{
@@ -286,7 +286,7 @@ func (ri *RouteInformation) marshal() ([]byte, error) {
 	//
 	// Therefore, any prefix, when masked with its specified length, should be
 	// identical to the prefix itself for it to be valid.
-	err := fmt.Errorf("ndp: invalid route information: %s/%d", ri.Prefix.String(), ri.PrefixLength)
+	err := fmt.Errorf("ndp: invalid route information: %s/%d", ri.Prefix, ri.PrefixLength)
 	p := netip.PrefixFrom(ri.Prefix, int(ri.PrefixLength))
 	if masked := p.Masked(); ri.Prefix != masked.Addr() {
 		return nil, err

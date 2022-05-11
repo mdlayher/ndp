@@ -411,7 +411,7 @@ func (rs *RouterSolicitation) unmarshal(b []byte) error {
 // checkIPv6 verifies that ip is an IPv6 address.
 func checkIPv6(ip netip.Addr) error {
 	if !ip.Is6() || ip.Is4In6() {
-		return fmt.Errorf("ndp: invalid IPv6 address: %q", ip.String())
+		return fmt.Errorf("ndp: invalid IPv6 address: %q", ip)
 	}
 
 	return nil
