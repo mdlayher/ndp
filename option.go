@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode"
 
-	"gitlab.com/golang-commonmark/puny"
+	"golang.org/x/net/idna"
 )
 
 // Infinity indicates that a prefix is valid for an infinite amount of time,
@@ -534,7 +534,12 @@ func (d *DNSSearchList) marshal() ([]byte, error) {
 	// https://tools.ietf.org/html/rfc1035#section-3.1.
 	for _, dn := range d.DomainNames {
 		// All unicode names must be converted to punycode.
-		for _, label := range strings.Split(puny.ToASCII(dn), ".") {
+		dn, err := idna.ToASCII(dn)
+		if err != nil {
+			return nil, errDNSSLBadDomains
+		}
+
+		for _, label := range strings.Split(dn, ".") {
 			// Label must be convertable to valid Punycode.
 			if !isASCII(label) {
 				return nil, errDNSSLBadDomains
@@ -612,7 +617,10 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 		}
 
 		// Verify that the Punycode label decodes to something sane.
-		label = puny.ToUnicode(label)
+		label, err := idna.ToUnicode(label)
+		if err != nil {
+			return errDNSSLBadDomains
+		}
 
 		// TODO(mdlayher): much smarter validation.
 		if label == "" || hasUnicodeReplacement(label) || strings.Contains(label, ".") || strings.Contains(label, " ") {
@@ -627,7 +635,12 @@ func (d *DNSSearchList) unmarshal(b []byte) error {
 		if raw.Value[i] == 0 {
 			i++
 
-			domains = append(domains, puny.ToUnicode(strings.Join(labels, ".")))
+			domain, err := idna.ToUnicode(strings.Join(labels, "."))
+			if err != nil {
+				return errDNSSLBadDomains
+			}
+
+			domains = append(domains, domain)
 			labels = []string{}
 
 			// Have we reached the end of the value slice?
