@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v1.0.0
+
+First stable release, no API changes since v0.10.0.
+
 ## v0.10.0
 
 - [API Change]
