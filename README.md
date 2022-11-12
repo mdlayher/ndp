@@ -6,7 +6,7 @@ Package `ndp` implements the Neighbor Discovery Protocol, as described in
 The command `ndp` is a utility for working with the Neighbor Discovery Protocol.
 
 To learn more about NDP, and how to use this package, check out my blog:
-[Network Protocol Breakdown:  NDP and Go](https://medium.com/@mdlayher/network-protocol-breakdown-ndp-and-go-3dc2900b1c20).
+[Network Protocol Breakdown: NDP and Go](https://mdlayher.com/blog/network-protocol-breakdown-ndp-and-go/).
 
 ## Examples
 
