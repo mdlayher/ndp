@@ -9,16 +9,11 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"time"
 
 	"github.com/mdlayher/ndp"
-	"golang.org/x/sync/errgroup"
 )
 
-var (
-	errPrefixOp = errors.New("flag '-p' is only valid for router advertisement operation")
-	errTargetOp = errors.New("flag '-t' is only valid for neighbor solicitation operation")
-)
+var errTargetOp = errors.New("flag '-t' is only valid for neighbor solicitation operation")
 
 // Run runs the ndp utility.
 func Run(
@@ -26,13 +21,10 @@ func Run(
 	c *ndp.Conn,
 	ifi *net.Interface,
 	op string,
-	target, prefix netip.Addr,
+	target netip.Addr,
 ) error {
 	if op != "ns" && target.IsValid() {
 		return errTargetOp
-	}
-	if op != "ra" && prefix.IsValid() {
-		return errPrefixOp
 	}
 
 	switch op {
@@ -41,12 +33,6 @@ func Run(
 		return listen(ctx, c)
 	case "ns":
 		return sendNS(ctx, c, ifi.HardwareAddr, target)
-	case "ra":
-		if !prefix.IsValid() || prefix == netip.IPv6Unspecified() {
-			return errors.New("flag '-p' is required for router advertisement operation")
-		}
-
-		return doRA(ctx, c, ifi.HardwareAddr, prefix)
 	case "rs":
 		return sendRS(ctx, c, ifi.HardwareAddr)
 	default:
@@ -113,74 +99,6 @@ func sendNS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, target neti
 	}
 
 	return nil
-}
-
-func doRA(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr, prefix netip.Addr) error {
-	ll := log.New(os.Stderr, "ndp ra> ", 0)
-
-	ll.Printf("advertising prefix %s/64 for SLAAC", prefix)
-
-	// This tool is mostly meant for testing so hardcode a bunch of values.
-	m := &ndp.RouterAdvertisement{
-		CurrentHopLimit:           64,
-		RouterSelectionPreference: ndp.Medium,
-		RouterLifetime:            30 * time.Second,
-		Options: []ndp.Option{
-			&ndp.PrefixInformation{
-				PrefixLength:                   64,
-				AutonomousAddressConfiguration: true,
-				ValidLifetime:                  60 * time.Second,
-				PreferredLifetime:              30 * time.Second,
-				Prefix:                         prefix,
-			},
-			&ndp.LinkLayerAddress{
-				Direction: ndp.Source,
-				Addr:      addr,
-			},
-		},
-	}
-
-	// Expect any router solicitation message.
-	check := func(m ndp.Message) bool {
-		_, ok := m.(*ndp.RouterSolicitation)
-		return ok
-	}
-
-	// Trigger an RA whenever an RS is received.
-	rsC := make(chan struct{})
-	recv := func(ll *log.Logger, msg ndp.Message, from netip.Addr) {
-		printMessage(ll, m, from)
-		rsC <- struct{}{}
-	}
-
-	// We are now a "router".
-	if err := c.JoinGroup(netip.MustParseAddr("ff02::2")); err != nil {
-		return fmt.Errorf("failed to join multicast group: %v", err)
-	}
-
-	var eg errgroup.Group
-	eg.Go(func() error {
-		// Send messages until cancelation or error.
-		for {
-			if err := c.WriteTo(m, nil, netip.IPv6LinkLocalAllNodes()); err != nil {
-				return fmt.Errorf("failed to send router advertisement: %v", err)
-			}
-
-			select {
-			case <-ctx.Done():
-				return nil
-			// Trigger RA at regular intervals or on demand.
-			case <-time.After(10 * time.Second):
-			case <-rsC:
-			}
-		}
-	})
-
-	if err := receiveLoop(ctx, c, ll, check, recv); err != nil {
-		return fmt.Errorf("failed to receive router solicitations: %v", err)
-	}
-
-	return eg.Wait()
 }
 
 func sendRS(ctx context.Context, c *ndp.Conn, addr net.HardwareAddr) error {

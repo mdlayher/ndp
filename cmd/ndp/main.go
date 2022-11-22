@@ -21,7 +21,6 @@ func main() {
 		ifiFlag    = flag.String("i", "", "network interface to use for NDP communication (default: automatic)")
 		addrFlag   = flag.String("a", string(ndp.LinkLocal), "address to use for NDP communication (unspecified, linklocal, uniquelocal, global, or a literal IPv6 address)")
 		targetFlag = flag.String("t", "", "IPv6 target address for neighbor solicitation NDP messages")
-		prefixFlag = flag.String("p", "", "IPv6 address prefix (without CIDR mask) to advertise with router advertisement NDP messages")
 	)
 
 	flag.Usage = func() {
@@ -55,17 +54,6 @@ func main() {
 		}
 	}
 
-	var prefix netip.Addr
-	if p := *prefixFlag; p != "" {
-		prefix, err = netip.ParseAddr(p)
-		if err != nil {
-			ll.Fatalf("failed to parse IPv6 prefix address: %v", err)
-		}
-		if prefix != netip.PrefixFrom(prefix, 64).Masked().Addr() {
-			ll.Fatalf("prefix must be a valid /64, got: %q", p)
-		}
-	}
-
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, os.Interrupt)
 
@@ -88,7 +76,7 @@ func main() {
 	ll.Printf("interface: %s, link-layer address: %s, IPv6 address: %s",
 		ifi.Name, mac, ip)
 
-	if err := ndpcmd.Run(ctx, c, ifi, flag.Arg(0), target, prefix); err != nil {
+	if err := ndpcmd.Run(ctx, c, ifi, flag.Arg(0), target); err != nil {
 		// Context cancel means a signal was sent, so no need to log an error.
 		if err == context.Canceled {
 			os.Exit(1)
@@ -151,22 +139,24 @@ func findInterface(name string) (*net.Interface, error) {
 
 const usage = `ndp: utility for working with the Neighbor Discovery Protocol.
 
+By default, this tool will automatically bind to IPv6 link-local address of the first interface which is capable of using NDP.
+
+To enable more convenient use without sudo on Linux, apply the CAP_NET_RAW capability:
+
+$ sudo setcap cap_net_raw+ep ./ndp
+
 Examples:
-  Listen for incoming NDP messages on interface eth0 to one of the interface's
-  global unicast addresses.
+  Listen for incoming NDP messages on the default interface.
 
-    $ sudo ndp -i eth0 -a global listen
-    $ sudo ndp -i eth0 -a 2001:db8::1 listen
+    $ ndp
 
-  Send router solicitations on interface eth0 from the interface's link-local
-  address until a router advertisement is received.
+  Send router solicitations on the default interface until a router advertisement is received.
 
-    $ sudo ndp -i eth0 -a linklocal rs
+    $ ndp rs
 
-  Send neighbor solicitations on interface eth0 to a neighbor's link-local
-  address until a neighbor advertisement is received.
+  Send neighbor solicitations on the default interface until a neighbor advertisement is received.
 
-    $ sudo ndp -i eth0 -a linklocal -t fe80::1 ns`
+    $ ndp -t fe80::1 ns`
 
 func panicf(format string, a ...any) {
 	panic(fmt.Sprintf(format, a...))
