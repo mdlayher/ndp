@@ -1,5 +1,10 @@
 # CHANGELOG
 
+# v1.0.1
+
+- [Improvement]: updated dependencies, test with Go 1.20.
+- [Improvement]: switch from `math/rand` to `crypto/rand` for Nonce generation.
+
 ## v1.0.0
 
 First stable release, no API changes since v0.10.0.
