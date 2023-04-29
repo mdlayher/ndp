@@ -2,13 +2,13 @@ package ndp
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"net/netip"
 	"net/url"
@@ -777,7 +777,9 @@ func NewNonce() *Nonce {
 	// recognizes as of kernel 5.17.
 	const n = 6
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panicf("ndp: failed to generate nonce bytes: %v", err)
+	}
 
 	return &Nonce{b: b}
 }
