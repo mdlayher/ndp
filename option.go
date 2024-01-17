@@ -40,6 +40,7 @@ const (
 	optNonce             = 14
 	optRouteInformation  = 24
 	optRDNSS             = 25
+	optRAFlagsExtension  = 26
 	optDNSSL             = 31
 	optCaptivePortal     = 37
 )
@@ -766,6 +767,71 @@ func (cp *CaptivePortal) unmarshal(b []byte) error {
 	return nil
 }
 
+// A RAFlagsExtension is a Router Advertisement Flags Extension (or Expansion)
+// option, as described in RFC 5175, Section 4.
+type RAFlagsExtension struct {
+	Flags RAFlags
+}
+
+// RAFlags is a bitmask of Router Advertisement flags contained within an
+// RAFlagsExtension.
+type RAFlags []byte
+
+// Code implements Option.
+func (*RAFlagsExtension) Code() byte { return optRAFlagsExtension }
+
+func (ra *RAFlagsExtension) marshal() ([]byte, error) {
+	// "MUST NOT be added to a Router Advertisement message if no flags in the
+	// option are set."
+	//
+	// TODO(mdlayher): replace with slices.IndexFunc when we raise the minimum
+	// Go version.
+	var found bool
+	for _, b := range ra.Flags {
+		if b != 0x00 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, errors.New("ndp: RA flags extension requires one or more flags to be set")
+	}
+
+	// Enforce the option size matches the next unit of 8 bytes including 2
+	// bytes for code and length.
+	l := len(ra.Flags)
+	if r := (l + 2) % 8; r != 0 {
+		return nil, errors.New("ndp: RA flags extension length is invalid")
+	}
+
+	value := make([]byte, l)
+	copy(value, ra.Flags)
+
+	raw := &RawOption{
+		Type:   ra.Code(),
+		Length: (uint8(l) + 2) / 8,
+		Value:  value,
+	}
+
+	return raw.marshal()
+}
+
+func (ra *RAFlagsExtension) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	// Don't allow short bytes.
+	if len(raw.Value) < 6 {
+		return errors.New("ndp: RA Flags Extension too short")
+	}
+
+	// raw already made a copy.
+	ra.Flags = raw.Value
+	return nil
+}
+
 // A Nonce is a Nonce option, as described in RFC 3971, Section 5.3.2.
 type Nonce struct {
 	b []byte
@@ -926,6 +992,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(RouteInformation)
 		case optRDNSS:
 			o = new(RecursiveDNSServer)
+		case optRAFlagsExtension:
+			o = new(RAFlagsExtension)
 		case optDNSSL:
 			o = new(DNSSearchList)
 		case optCaptivePortal:

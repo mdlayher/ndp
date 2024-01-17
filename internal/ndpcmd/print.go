@@ -171,6 +171,8 @@ func optStr(o ndp.Option) string {
 		servers := strings.Join(ss, ", ")
 
 		return fmt.Sprintf("recursive DNS servers: lifetime: %s, servers: %s", o.Lifetime, servers)
+	case *ndp.RAFlagsExtension:
+		return fmt.Sprintf("RA flags extension: [%# 02x]", o.Flags)
 	case *ndp.DNSSearchList:
 		return fmt.Sprintf("DNS search list: lifetime: %s, domain names: %s", o.Lifetime, strings.Join(o.DomainNames, ", "))
 	case *ndp.CaptivePortal:

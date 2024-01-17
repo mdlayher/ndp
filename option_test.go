@@ -60,6 +60,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			subs: rdnssTests(),
 		},
 		{
+			name: "RA flags extension",
+			subs: raFlagsExtensionTests(),
+		},
+		{
 			name: "DNS search list",
 			subs: dnsslTests(),
 		},
@@ -272,6 +276,20 @@ func TestOptionUnmarshalError(t *testing.T) {
 						ndptest.Zero(16),
 						// Second server, half an IPv6 address.
 						ndptest.Zero(8),
+					},
+				},
+			},
+		},
+		{
+			name: "ra flags extension",
+			o:    &RAFlagsExtension{},
+			subs: []sub{
+				{
+					name: "short flags",
+					bs: [][]byte{
+						{26, 1},
+						// Short flags.
+						ndptest.Zero(5),
 					},
 				},
 			},
@@ -770,6 +788,70 @@ func rdnssTests() []optionSub {
 				{0x00, 0x01, 0x51, 0x80},
 				first.AsSlice(),
 				second.AsSlice(),
+			},
+			ok: true,
+		},
+	}
+}
+
+func raFlagsExtensionTests() []optionSub {
+	return []optionSub{
+		{
+			name: "bad, no flags",
+			os: []Option{
+				&RAFlagsExtension{},
+			},
+		},
+		{
+			name: "bad, zero flags",
+			os: []Option{
+				&RAFlagsExtension{
+					Flags: RAFlags(ndptest.Zero(6)),
+				},
+			},
+		},
+		{
+			name: "bad, short padding",
+			os: []Option{
+				&RAFlagsExtension{
+					Flags: RAFlags{
+						0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
+						0x00,
+					},
+				},
+			},
+		},
+		{
+			name: "ok, length 1",
+			os: []Option{
+				&RAFlagsExtension{
+					Flags: RAFlags{0x80, 0x00, 0x00, 0x00, 0x00, 0x00},
+				},
+			},
+			bs: [][]byte{
+				{26, 1},
+				// Short values.
+				{128, 0, 0, 0, 0, 0},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, length 2",
+			os: []Option{
+				&RAFlagsExtension{
+					Flags: RAFlags{
+						0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
+						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+					},
+				},
+			},
+			bs: [][]byte{
+				{26, 2},
+				// Short values.
+				{
+					128, 0, 0, 0, 0, 0,
+					0, 0, 0, 0, 0, 0, 0, 0,
+				},
 			},
 			ok: true,
 		},
