@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        go-version: ["1.18", "1.19", "1.20"]
+        go-version: ["1.21", "1.22"]
         # TODO(mdlayher): tests are failing on macOS but almost all consumers of
         # this package are Linux. Investigate.
         os: [ubuntu-latest]
