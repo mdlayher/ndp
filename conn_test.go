@@ -193,4 +193,5 @@ func TestSolicitedNodeMulticast(t *testing.T) {
 	}
 }
 
-func addrEqual(x, y netip.Addr) bool { return x == y }
+func addrEqual(x, y netip.Addr) bool     { return x == y }
+func prefixEqual(x, y netip.Prefix) bool { return x == y }

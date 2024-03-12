@@ -177,6 +177,8 @@ func optStr(o ndp.Option) string {
 		return fmt.Sprintf("DNS search list: lifetime: %s, domain names: %s", o.Lifetime, strings.Join(o.DomainNames, ", "))
 	case *ndp.CaptivePortal:
 		return fmt.Sprintf("captive portal: %s", o.URI)
+	case *ndp.PREF64:
+		return fmt.Sprintf("pref64: %s, lifetime: %s", o.Prefix, o.Lifetime)
 	case *ndp.Nonce:
 		return fmt.Sprintf("nonce: %s", o)
 	default:

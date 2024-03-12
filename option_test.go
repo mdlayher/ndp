@@ -72,6 +72,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			subs: cpTests(),
 		},
 		{
+			name: "pref64",
+			subs: pref64Tests(),
+		},
+		{
 			name: "nonce",
 			subs: nonceTests(),
 		},
@@ -104,7 +108,7 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 						t.Fatalf("failed to unmarshal options: %v", err)
 					}
 
-					if diff := cmp.Diff(st.os, got, cmp.Comparer(addrEqual)); diff != "" {
+					if diff := cmp.Diff(st.os, got, cmp.Comparer(addrEqual), cmp.Comparer(prefixEqual)); diff != "" {
 						t.Fatalf("unexpected options (-want +got):\n%s", diff)
 					}
 				})
@@ -1017,6 +1021,101 @@ func cpTests() []optionSub {
 			os:   []Option{mustCaptivePortal("")},
 			bs:   urnBytes,
 			ok:   true,
+		},
+	}
+}
+
+func pref64Tests() []optionSub {
+	return []optionSub{
+		{
+			name: "bad, invalid prefix size",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/33"), Lifetime: time.Duration(0)},
+			},
+		},
+		{
+			name: "bad, invalid lifetime",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/32"), Lifetime: time.Hour * 24},
+			},
+		},
+		{
+			name: "ok, smallest prefix, max lifetime",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96"), Lifetime: time.Second * 8 * 8191},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0xff, 0xf8, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, /64 prefix",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/64"), Lifetime: time.Second * 8 * 8191},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0xff, 0xf9, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, /56 prefix",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/56"), Lifetime: time.Second * 8 * 8191},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0xff, 0xfa, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, /48 prefix",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/48"), Lifetime: time.Second * 8 * 8191},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0xff, 0xfb, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, /40 prefix",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/40"), Lifetime: time.Second * 8 * 8191},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0xff, 0xfc, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
+		},
+		{
+			name: "ok, maximum prefix, small lifetime",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/32"), Lifetime: time.Minute * 10},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0x02, 0x5d, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
 		},
 	}
 }
