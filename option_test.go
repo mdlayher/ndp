@@ -76,6 +76,10 @@ func TestOptionMarshalUnmarshal(t *testing.T) {
 			subs: pref64Tests(),
 		},
 		{
+			name: "pvd",
+			subs: pvdTests(),
+		},
+		{
 			name: "nonce",
 			subs: nonceTests(),
 		},
@@ -1114,6 +1118,115 @@ func pref64Tests() []optionSub {
 					0x02, 0x5d, 0x20, 0x01, 0x0d, 0xb8, 0x00,
 					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				},
+			},
+			ok: true,
+		},
+	}
+}
+
+func pvdTests() []optionSub {
+	return []optionSub{
+		{
+			name: "bad, empty ID",
+			os:   []Option{&PvD{}},
+		},
+		{
+			name: "bad, delay too large",
+			os:   []Option{&PvD{ID: "example.com", Delay: 16}},
+		},
+		{
+			name: "ok, minimal example.com",
+			os:   []Option{&PvD{ID: "example.com"}},
+			bs: [][]byte{
+				// type, length (3 * 8 = 24 bytes)
+				{0x15, 0x03},
+				// flags byte 0, flags byte 1 (delay), sequence number
+				{0x00, 0x00, 0x00, 0x00},
+				// FQDN: \x07example\x03com\x00
+				{
+					0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+					0x03, 'c', 'o', 'm', 0x00,
+				},
+				// Padding to 8-octet boundary (5 bytes).
+				ndptest.Zero(5),
+			},
+			ok: true,
+		},
+		{
+			name: "ok, H and L flags with delay and sequence",
+			os: []Option{&PvD{
+				ID:       "pvd.example.com",
+				HTTPInfo: true,
+				Legacy:   true,
+				Delay:    15,
+				Sequence: 0x1234,
+			}},
+			bs: [][]byte{
+				// type, length (3 * 8 = 24 bytes)
+				{0x15, 0x03},
+				// flags: H|L=0xC0, delay=0x0F, sequence=0x1234
+				{0xC0, 0x0F, 0x12, 0x34},
+				// FQDN: \x03pvd\x07example\x03com\x00
+				{
+					0x03, 'p', 'v', 'd',
+					0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+					0x03, 'c', 'o', 'm', 0x00,
+				},
+				// Padding to 8-octet boundary (1 byte).
+				ndptest.Zero(1),
+			},
+			ok: true,
+		},
+		{
+			name: "ok, R flag with empty embedded RA",
+			os: []Option{&PvD{
+				ID:                  "pvd.example.com",
+				RouterAdvertisement: &RouterAdvertisement{},
+			}},
+			bs: [][]byte{
+				// type, length (5 * 8 = 40 bytes)
+				{0x15, 0x05},
+				// flags: R=0x20, delay=0, sequence=0
+				{0x20, 0x00, 0x00, 0x00},
+				// FQDN + 1 padding byte
+				{
+					0x03, 'p', 'v', 'd',
+					0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+					0x03, 'c', 'o', 'm', 0x00,
+				},
+				ndptest.Zero(1),
+				// Embedded ICMPv6 header: type=134, code=0, checksum=0
+				{0x86, 0x00, 0x00, 0x00},
+				// 12-byte zero RA body
+				ndptest.Zero(12),
+			},
+			ok: true,
+		},
+		{
+			name: "ok, R flag with nested MTU option",
+			os: []Option{&PvD{
+				ID: "pvd.example.com",
+				RouterAdvertisement: &RouterAdvertisement{
+					Options: []Option{NewMTU(1500)},
+				},
+			}},
+			bs: [][]byte{
+				// type, length (6 * 8 = 48 bytes)
+				{0x15, 0x06},
+				// flags: R, sequence
+				{0x20, 0x00, 0x00, 0x00},
+				// FQDN + 1 padding byte
+				{
+					0x03, 'p', 'v', 'd',
+					0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
+					0x03, 'c', 'o', 'm', 0x00,
+				},
+				ndptest.Zero(1),
+				// ICMPv6 header + zero RA body
+				{0x86, 0x00, 0x00, 0x00},
+				ndptest.Zero(12),
+				// Nested MTU option (1500).
+				{0x05, 0x01, 0x00, 0x00, 0x00, 0x00, 0x05, 0xdc},
 			},
 			ok: true,
 		},

@@ -39,6 +39,7 @@ const (
 	optPrefixInformation = 3
 	optMTU               = 5
 	optNonce             = 14
+	optPvD               = 21
 	optRouteInformation  = 24
 	optRDNSS             = 25
 	optRAFlagsExtension  = 26
@@ -883,6 +884,255 @@ func (p *PREF64) unmarshal(b []byte) error {
 	return nil
 }
 
+// A PvD is a Provisioning Domain ID Router Advertisement Option, as described
+// in RFC 8801, Section 3. The option labels a coherent set of network
+// configuration (carried as nested options in RouterAdvertisement when set)
+// with an FQDN that hosts use to disambiguate configuration from multiple
+// networks sharing the same link.
+type PvD struct {
+	// ID is the FQDN that identifies this provisioning domain. DNS name
+	// compression is forbidden by the RFC, so the name is always encoded in
+	// full DNS wire format.
+	ID string
+
+	// HTTPInfo indicates that PvD Additional Information may be retrieved
+	// over HTTPS from a well-known URI derived from ID. Sets the H flag.
+	HTTPInfo bool
+
+	// Legacy indicates that this PvD is associated with IPv4 configuration
+	// provided by DHCPv4 on the same interface. Sets the L flag.
+	Legacy bool
+
+	// Delay is a 4-bit value used by clients to randomize HTTP GET backoff
+	// when fetching PvD Additional Information. Values larger than 15 are
+	// rejected by marshal.
+	Delay uint8
+
+	// Sequence is the sequence number of the PvD Additional Information.
+	// Hosts use changes to this value as a signal to re-fetch.
+	Sequence uint16
+
+	// RouterAdvertisement, when non-nil, embeds an RA whose options and
+	// header fields are scoped to this PvD. Sets the R flag. The embedded
+	// ICMPv6 Type (134), Code (0), and Checksum (0) bytes are managed
+	// automatically per RFC 8801, Section 3.1.
+	RouterAdvertisement *RouterAdvertisement
+}
+
+// Code implements Option.
+func (*PvD) Code() byte { return optPvD }
+
+const (
+	// Maximum value for the 4-bit Delay field.
+	pvdMaxDelay = 0x0f
+
+	// Offset of the FQDN within RawOption.Value (after flags and sequence).
+	pvdFQDNOff = 4
+)
+
+var (
+	errPvDEmptyID       = errors.New("ndp: PvD option requires a non-empty ID FQDN")
+	errPvDBadID         = errors.New("ndp: PvD option ID FQDN is malformed")
+	errPvDDelayTooLarge = errors.New("ndp: PvD option delay must fit in 4 bits")
+	errPvDTooShort      = errors.New("ndp: PvD option is too short")
+	errPvDTooLong       = errors.New("ndp: PvD option exceeds maximum length")
+)
+
+func (p *PvD) marshal() ([]byte, error) {
+	if p.ID == "" {
+		return nil, errPvDEmptyID
+	}
+	if p.Delay > pvdMaxDelay {
+		return nil, errPvDDelayTooLarge
+	}
+
+	id, err := encodeFQDN(p.ID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errPvDBadID, err)
+	}
+
+	// Build the option's value (everything after the 2-byte type+length
+	// header): two flag bytes, a 16-bit sequence number, then the FQDN
+	// padded to an 8-octet boundary of the full option.
+	value := make([]byte, pvdFQDNOff, pvdFQDNOff+len(id)+8)
+
+	if p.HTTPInfo {
+		value[0] |= 1 << 7
+	}
+	if p.Legacy {
+		value[0] |= 1 << 6
+	}
+	if p.RouterAdvertisement != nil {
+		value[0] |= 1 << 5
+	}
+	value[1] = p.Delay & pvdMaxDelay
+	binary.BigEndian.PutUint16(value[2:4], p.Sequence)
+	value = append(value, id...)
+
+	// Pad to the next 8-octet boundary, accounting for the 2-byte type+length
+	// header which is prepended later by RawOption.marshal.
+	if r := (2 + len(value)) % 8; r != 0 {
+		value = append(value, make([]byte, 8-r)...)
+	}
+
+	// When the R flag is set, append the embedded RA: a full 16-byte ICMPv6
+	// header (Type=134, Code=0, Checksum=0) followed by the RA body and its
+	// options. marshalMessage with a nil pseudo-header produces a zero
+	// checksum, which is what RFC 8801 requires on the wire.
+	if ra := p.RouterAdvertisement; ra != nil {
+		rab, err := marshalMessage(ra, nil)
+		if err != nil {
+			return nil, err
+		}
+		// Defensively zero the checksum bytes in case a future icmp.Marshal
+		// chooses to populate them.
+		rab[2], rab[3] = 0, 0
+		value = append(value, rab...)
+	}
+
+	total := 2 + len(value)
+	if total/8 > 255 {
+		return nil, errPvDTooLong
+	}
+
+	raw := &RawOption{
+		Type:   p.Code(),
+		Length: uint8(total / 8),
+		Value:  value,
+	}
+	return raw.marshal()
+}
+
+func (p *PvD) unmarshal(b []byte) error {
+	raw := new(RawOption)
+	if err := raw.unmarshal(b); err != nil {
+		return err
+	}
+
+	if len(raw.Value) < pvdFQDNOff {
+		return errPvDTooShort
+	}
+
+	*p = PvD{
+		HTTPInfo: raw.Value[0]&0x80 != 0,
+		Legacy:   raw.Value[0]&0x40 != 0,
+		Delay:    raw.Value[1] & pvdMaxDelay,
+		Sequence: binary.BigEndian.Uint16(raw.Value[2:4]),
+	}
+	rFlag := raw.Value[0]&0x20 != 0
+
+	id, n, err := decodeFQDN(raw.Value[pvdFQDNOff:])
+	if err != nil {
+		return fmt.Errorf("%w: %v", errPvDBadID, err)
+	}
+	p.ID = id
+
+	// Skip padding to the next 8-octet boundary of the full option. The
+	// 2-byte type+length header is not in raw.Value but contributes to the
+	// boundary calculation.
+	consumed := 2 + pvdFQDNOff + n
+	if pad := consumed % 8; pad != 0 {
+		n += 8 - pad
+	}
+
+	if !rFlag {
+		// No embedded RA; remaining bytes (if any) are padding.
+		return nil
+	}
+
+	rest := raw.Value[pvdFQDNOff+n:]
+	// Require at least the ICMPv6 header and RA body.
+	if len(rest) < icmpLen+raLen {
+		return errPvDTooShort
+	}
+
+	// ICMPv6 Type, Code, and Checksum are mandated by the RFC to be set in a
+	// particular way by the sender and ignored by the receiver, so skip them.
+	ra := new(RouterAdvertisement)
+	if err := ra.unmarshal(rest[icmpLen:]); err != nil {
+		return err
+	}
+	p.RouterAdvertisement = ra
+
+	return nil
+}
+
+// encodeFQDN encodes a domain name in DNS wire format per RFC 1035, Section
+// 3.1 without compression, terminated by a zero-length label. Unicode names
+// are converted to ASCII via IDNA.
+func encodeFQDN(name string) ([]byte, error) {
+	ascii, err := idna.ToASCII(name)
+	if err != nil {
+		return nil, err
+	}
+	ascii = strings.TrimSuffix(ascii, ".")
+	if ascii == "" {
+		return nil, errors.New("empty domain name")
+	}
+
+	var out []byte
+	for _, label := range strings.Split(ascii, ".") {
+		if !isASCII(label) {
+			return nil, errors.New("non-ASCII label after IDNA conversion")
+		}
+		l := len(label)
+		if l == 0 || l > 63 {
+			return nil, fmt.Errorf("invalid label length %d", l)
+		}
+		out = append(out, byte(l))
+		out = append(out, label...)
+	}
+	out = append(out, 0)
+
+	if len(out) > 255 {
+		return nil, errors.New("FQDN exceeds 255 octets")
+	}
+	return out, nil
+}
+
+// decodeFQDN decodes a DNS wire-format FQDN at the start of b, returning the
+// unicode-formatted domain and the number of bytes consumed including the
+// zero-length terminator. Compression pointers are rejected.
+func decodeFQDN(b []byte) (string, int, error) {
+	var labels []string
+	i := 0
+	for {
+		if i >= len(b) {
+			return "", 0, errors.New("truncated FQDN")
+		}
+		n := int(b[i])
+		if n&0xc0 != 0 {
+			// Top two bits set indicate a compression pointer, which RFC
+			// 8801 forbids.
+			return "", 0, errors.New("FQDN compression is not permitted")
+		}
+		i++
+		if n == 0 {
+			break
+		}
+		if n > 63 {
+			return "", 0, errors.New("invalid label length")
+		}
+		if i+n > len(b) {
+			return "", 0, errors.New("truncated label")
+		}
+		label := string(b[i : i+n])
+		if !isASCII(label) {
+			return "", 0, errors.New("non-ASCII label")
+		}
+		labels = append(labels, label)
+		i += n
+	}
+	if len(labels) == 0 {
+		return "", 0, errors.New("empty FQDN")
+	}
+	name, err := idna.ToUnicode(strings.Join(labels, "."))
+	if err != nil {
+		return "", 0, err
+	}
+	return name, i, nil
+}
+
 // A RAFlagsExtension is a Router Advertisement Flags Extension (or Expansion)
 // option, as described in RFC 5175, Section 4.
 type RAFlagsExtension struct {
@@ -1116,6 +1366,8 @@ func parseOptions(b []byte) ([]Option, error) {
 			o = new(CaptivePortal)
 		case optPREF64:
 			o = new(PREF64)
+		case optPvD:
+			o = new(PvD)
 		case optNonce:
 			o = new(Nonce)
 		default:
