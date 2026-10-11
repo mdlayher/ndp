@@ -382,6 +382,40 @@ func raTests() []messageSub {
 			},
 		},
 		{
+			name: "bad, router lifetime does not fit",
+			m: &ndp.RouterAdvertisement{
+				RouterLifetime: 65536 * time.Second,
+			},
+		},
+		{
+			name: "bad, negative router lifetime",
+			m: &ndp.RouterAdvertisement{
+				RouterLifetime: -time.Second,
+			},
+		},
+		{
+			name: "bad, reachable time does not fit",
+			m: &ndp.RouterAdvertisement{
+				ReachableTime: (1 << 32) * time.Millisecond,
+			},
+		},
+		{
+			name: "bad, retransmit timer does not fit",
+			m: &ndp.RouterAdvertisement{
+				RetransmitTimer: (1 << 32) * time.Millisecond,
+			},
+		},
+		{
+			name: "ok, maximum router lifetime",
+			m: &ndp.RouterAdvertisement{
+				RouterLifetime: 65535 * time.Second,
+			},
+			bs: [][]byte{
+				{0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			},
+			ok: true,
+		},
+		{
 			name: "ok, no options",
 			m: &ndp.RouterAdvertisement{
 				CurrentHopLimit:      10,
