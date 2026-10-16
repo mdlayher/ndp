@@ -300,14 +300,25 @@ func (ra *RouterAdvertisement) marshal() ([]byte, error) {
 		b[1] |= (1 << 2)
 	}
 
-	lifetime := ra.RouterLifetime.Seconds()
-	binary.BigEndian.PutUint16(b[2:4], uint16(lifetime))
+	// These fields are fixed width. A value that does not fit must not wrap:
+	// a 16-bit lifetime of 0 means the router is not a default router.
+	lifetime, err := uint16Seconds(ra.RouterLifetime)
+	if err != nil {
+		return nil, err
+	}
+	binary.BigEndian.PutUint16(b[2:4], lifetime)
 
-	reach := ra.ReachableTime / time.Millisecond
-	binary.BigEndian.PutUint32(b[4:8], uint32(reach))
+	reach, err := uint32Millis(ra.ReachableTime, "reachable time")
+	if err != nil {
+		return nil, err
+	}
+	binary.BigEndian.PutUint32(b[4:8], reach)
 
-	retrans := ra.RetransmitTimer / time.Millisecond
-	binary.BigEndian.PutUint32(b[8:12], uint32(retrans))
+	retrans, err := uint32Millis(ra.RetransmitTimer, "retransmit timer")
+	if err != nil {
+		return nil, err
+	}
+	binary.BigEndian.PutUint32(b[8:12], retrans)
 
 	ob, err := marshalOptions(ra.Options)
 	if err != nil {
@@ -415,6 +426,24 @@ func checkIPv6(ip netip.Addr) error {
 	}
 
 	return nil
+}
+
+// uint16Seconds reports whether d fits in the 16-bit seconds field of a
+// router advertisement. Zero is valid and means the router is not a default
+// router, so an out-of-range value is an error instead of a wrap to zero.
+func uint16Seconds(d time.Duration) (uint16, error) {
+	if d < 0 || d/time.Second > 65535 {
+		return 0, errors.New("ndp: router lifetime out of range")
+	}
+	return uint16(d / time.Second), nil
+}
+
+// uint32Millis reports whether d fits in a 32-bit millisecond field.
+func uint32Millis(d time.Duration, name string) (uint32, error) {
+	if d < 0 || d/time.Millisecond > 0xffffffff {
+		return 0, fmt.Errorf("ndp: %s out of range", name)
+	}
+	return uint32(d / time.Millisecond), nil
 }
 
 // checkPreference checks the validity of a Preference value.
