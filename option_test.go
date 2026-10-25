@@ -1040,6 +1040,43 @@ func pref64Tests() []optionSub {
 			},
 		},
 		{
+			name: "bad, negative lifetime rounded to zero",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96"), Lifetime: -time.Nanosecond},
+			},
+		},
+		{
+			name: "bad, lifetime wraps to zero",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96"), Lifetime: time.Second * 8 * 65536},
+			},
+		},
+		{
+			name: "bad, lifetime wraps to valid value",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96"), Lifetime: time.Second * 8 * (65536 + 8191)},
+			},
+		},
+		{
+			name: "bad, rounded lifetime exceeds maximum",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96"), Lifetime: time.Second * (8*8191 + 4)},
+			},
+		},
+		{
+			name: "ok, zero lifetime",
+			os: []Option{
+				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96")},
+			},
+			bs: [][]byte{
+				{0x26, 0x02}, {
+					0x00, 0x00, 0x20, 0x01, 0x0d, 0xb8, 0x00,
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				},
+			},
+			ok: true,
+		},
+		{
 			name: "ok, smallest prefix, max lifetime",
 			os: []Option{
 				&PREF64{Prefix: netip.MustParsePrefix("2001:db8::/96"), Lifetime: time.Second * 8 * 8191},
@@ -1172,4 +1209,22 @@ func mustCaptivePortal(uri string) *CaptivePortal {
 	}
 
 	return cp
+}
+
+func TestPREF64LifetimeRounding(t *testing.T) {
+	p := &PREF64{
+		Prefix:   netip.MustParsePrefix("2001:db8::/96"),
+		Lifetime: time.Second*(8*8191+4) - time.Nanosecond,
+	}
+	b, err := p.marshal()
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+	var got PREF64
+	if err := got.unmarshal(b); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if want := time.Second * 8 * 8191; got.Lifetime != want {
+		t.Fatalf("unexpected lifetime: got %s, want %s", got.Lifetime, want)
+	}
 }

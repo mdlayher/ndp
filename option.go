@@ -800,7 +800,10 @@ func (p *PREF64) marshal() ([]byte, error) {
 		return nil, errors.New("ndp: invalid pref64 prefix size")
 	}
 
-	scaledLifetime := uint16(math.Round(p.Lifetime.Seconds() / 8))
+	if p.Lifetime < 0 {
+		return nil, errors.New("ndp: pref64 lifetime cannot be negative")
+	}
+	scaledLifetime := math.Round(p.Lifetime.Seconds() / 8)
 
 	// The scaled lifetime must be less than the maximum of 8191.
 	if scaledLifetime > 8191 {
@@ -814,7 +817,7 @@ func (p *PREF64) marshal() ([]byte, error) {
 	// PLC at the last 3 bits of the 16-bit field.
 	value = binary.BigEndian.AppendUint16(
 		value,
-		(scaledLifetime<<3&(0xffff^0b111))|uint16(plc&0b111),
+		(uint16(scaledLifetime)<<3&(0xffff^0b111))|uint16(plc&0b111),
 	)
 
 	allPrefixBits := p.Prefix.Masked().Addr().As16()
