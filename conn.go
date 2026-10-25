@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"runtime"
+	"strconv"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -45,8 +46,10 @@ func Listen(ifi *net.Interface, addr Addr) (*Conn, netip.Addr, error) {
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
-
-	ic, err := icmp.ListenPacket("ip6:ipv6-icmp", ip.String())
+	// Specify the zone index to bind to the correct interface.
+	// The zone index is cached in https://github.com/golang/go/blob/go1.23.1/src/net/interface.go#L192
+	// and may result in binding on the wrong interface if using the interface name as zone.
+	ic, err := icmp.ListenPacket("ip6:ipv6-icmp", ip.WithZone(strconv.Itoa(ifi.Index)).String())
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
