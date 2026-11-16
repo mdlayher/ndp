@@ -373,19 +373,15 @@ func (ri *RouteInformation) unmarshal(b []byte) error {
 		return err
 	}
 
-	// Take up to the specified number of IP bytes into the prefix.
-	var (
-		addr [16]byte
-		buf  = raw.Value[6 : 6+(l/8)]
-	)
-
-	copy(addr[:], buf)
+	// Copy the encoded prefix, then ignore reserved bits after the prefix length.
+	var addr [16]byte
+	copy(addr[:], raw.Value[6:])
 
 	*ri = RouteInformation{
 		PrefixLength:  l,
 		Preference:    pref,
 		RouteLifetime: lt,
-		Prefix:        netip.AddrFrom16(addr),
+		Prefix:        netip.PrefixFrom(netip.AddrFrom16(addr), int(l)).Masked().Addr(),
 	}
 
 	return nil
