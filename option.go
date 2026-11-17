@@ -738,7 +738,7 @@ func (cp *CaptivePortal) marshal() ([]byte, error) {
 
 	raw := &RawOption{
 		Type:   cp.Code(),
-		Length: (uint8(l) + 2) / 8,
+		Length: uint8((l + 2) / 8),
 		Value:  value,
 	}
 
@@ -925,7 +925,7 @@ func (ra *RAFlagsExtension) marshal() ([]byte, error) {
 
 	raw := &RawOption{
 		Type:   ra.Code(),
-		Length: (uint8(l) + 2) / 8,
+		Length: uint8((l + 2) / 8),
 		Value:  value,
 	}
 
@@ -992,7 +992,7 @@ func (n *Nonce) marshal() ([]byte, error) {
 
 	raw := &RawOption{
 		Type:   n.Code(),
-		Length: (uint8(l) + 2) / 8,
+		Length: uint8((l + 2) / 8),
 		Value:  value,
 	}
 
@@ -1026,12 +1026,12 @@ func (r *RawOption) Code() byte { return r.Type }
 func (r *RawOption) marshal() ([]byte, error) {
 	// Length specified in units of 8 bytes, and the caller must provide
 	// an accurate length.
-	l := int(r.Length * 8)
+	l := int(r.Length) * 8
 	if 1+1+len(r.Value) != l {
 		return nil, io.ErrUnexpectedEOF
 	}
 
-	b := make([]byte, r.Length*8)
+	b := make([]byte, l)
 	b[0] = r.Type
 	b[1] = r.Length
 
@@ -1048,7 +1048,7 @@ func (r *RawOption) unmarshal(b []byte) error {
 	r.Type = b[0]
 	r.Length = b[1]
 	// Exclude type and length fields from value's length.
-	l := int(r.Length*8) - 2
+	l := int(r.Length)*8 - 2
 
 	// Enforce a valid length value that matches the expected one.
 	if lb := len(b[2:]); l != lb {
