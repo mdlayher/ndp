@@ -709,7 +709,7 @@ func NewCaptivePortal(uri string) (*CaptivePortal, error) {
 	// manually creating this string if they so choose, we'll return an error
 	// IP addresses. This includes bare IP addresses or IP addresses with some
 	// kind of path appended.
-	for _, s := range strings.Split(urn.Path, "/") {
+	for _, s := range append(strings.Split(urn.Path, "/"), urn.Hostname()) {
 		if ip, err := netip.ParseAddr(s); err == nil {
 			return nil, fmt.Errorf("ndp: captive portal option URIs should not contain IP addresses: %s", ip)
 		}
